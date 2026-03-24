@@ -1,0 +1,112 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 300 20% 97%;
+    --foreground: 300 10% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 300 10% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 300 10% 15%;
+
+    --primary: 293 52% 36%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 293 30% 92%;
+    --secondary-foreground: 293 52% 28%;
+
+    --muted: 293 15% 94%;
+    --muted-foreground: 293 10% 45%;
+
+    --accent: 293 30% 90%;
+    --accent-foreground: 293 52% 28%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 293 20% 88%;
+    --input: 293 20% 88%;
+    --ring: 293 52% 36%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 293 52% 36%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 293 52% 36%;
+    --sidebar-accent: 293 52% 42%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 293 52% 45%;
+    --sidebar-ring: 0 0% 100%;
+
+    /* Custom tokens */
+    --wine: 293 52% 36%;
+    --wine-light: 293 30% 92%;
+    --wine-dark: 293 52% 25%;
+    --table-header: 293 52% 36%;
+    --table-row-alt: 293 20% 95%;
+    --success: 142 71% 45%;
+    --warning: 38 92% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer components {
+  .report-table {
+    @apply w-full border-collapse text-sm;
+  }
+  .report-table thead th {
+    @apply bg-primary text-primary-foreground font-semibold px-3 py-2 text-center text-xs uppercase tracking-wide;
+  }
+  .report-table tbody tr:nth-child(even) {
+    background: hsl(var(--table-row-alt));
+  }
+  .report-table tbody tr:nth-child(odd) {
+    @apply bg-card;
+  }
+  .report-table tbody td {
+    @apply px-3 py-2 border border-border text-center;
+  }
+  .report-table tbody tr:hover {
+    background: hsl(var(--wine-light));
+  }
+
+  .section-header {
+    @apply bg-primary text-primary-foreground px-4 py-3 rounded-t-lg font-semibold text-sm flex items-center justify-between cursor-pointer select-none;
+  }
+  .section-header:active {
+    @apply scale-[0.99];
+  }
+
+  .section-body {
+    @apply bg-card border border-t-0 border-border rounded-b-lg p-4;
+  }
+
+  .page-header {
+    background: linear-gradient(135deg, hsl(var(--wine)) 0%, hsl(var(--wine-dark)) 100%);
+    @apply text-primary-foreground py-6 px-6;
+  }
+}
+
+@layer utilities {
+  .fade-in {
+    animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); filter: blur(4px); }
+    to { opacity: 1; transform: translateY(0); filter: blur(0); }
+  }
+}
