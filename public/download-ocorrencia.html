@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Baixando imagem...</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --purple: #7b2d8b;
+      --bg: #f7f3f8;
+      --text: #2c1631;
+      --muted: #7b6b80;
+      --border: #dbc6e2;
+    }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .box {
+      width: min(420px, calc(100vw - 32px));
+      background: rgba(255,255,255,.96);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      box-shadow: 0 12px 36px rgba(64, 18, 77, .08);
+    }
+    h1 { margin: 0 0 10px; font-size: 18px; color: var(--purple); }
+    p { margin: 0 0 12px; line-height: 1.45; }
+    .muted { color: var(--muted); font-size: 14px; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+    button, a {
+      appearance: none; border: 0; border-radius: 10px; padding: 10px 14px;
+      font-size: 14px; text-decoration: none; cursor: pointer;
+    }
+    .primary { background: var(--purple); color: white; }
+    .secondary { background: #efe6f2; color: var(--purple); }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>Baixando imagem da ocorrência</h1>
+    <p id="status">Seu download deve começar automaticamente.</p>
+    <p id="filename" class="muted"></p>
+    <div class="actions">
+      <a id="manualDownload" class="primary" href="#" download>Baixar imagem manualmente</a>
+      <button id="backBtn" type="button" class="secondary">Voltar</button>
+    </div>
+  </div>
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const occurrenceIndex = Number(params.get('index') || '-1');
+      const title = params.get('title') || 'ocorrencia';
+      const statusEl = document.getElementById('status');
+      const fileNameEl = document.getElementById('filename');
+      const manualLink = document.getElementById('manualDownload');
+      const backBtn = document.getElementById('backBtn');
+
+      backBtn.addEventListener('click', function () {
+        if (window.history.length > 1) {
+          window.history.back();
+          return;
+        }
+        window.close();
+      });
+
+      function slugify(value) {
+        return (value || 'ocorrencia')
+          .normalize('NFD')
+          .replace(/[̀-ͯ]/g, '')
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_+|_+$/g, '') || 'ocorrencia';
+      }
+
+      function getExtension(dataUrl) {
+        const match = String(dataUrl || '').match(/^data:image\/([a-zA-Z0-9.+-]+);base64,/);
+        if (!match) return 'png';
+        const raw = match[1].toLowerCase();
+        if (raw === 'jpeg') return 'jpg';
+        if (raw === 'svg+xml') return 'svg';
+        return raw;
+      }
+
+      function triggerDownload(dataUrl, fileName) {
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = fileName;
+        link.rel = 'noopener';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+
+      try {
+        const raw = localStorage.getItem('wbp_report_current');
+        const report = raw ? JSON.parse(raw) : null;
+        const occurrence = report && Array.isArray(report.ocorrencias) ? report.ocorrencias[occurrenceIndex] : null;
+        const imageDataUrl = occurrence && occurrence.imagemBase64 ? occurrence.imagemBase64 : '';
+
+        if (!imageDataUrl) {
+          statusEl.textContent = 'Imagem não encontrada neste navegador.';
+          manualLink.style.display = 'none';
+          return;
+        }
+
+        const extension = getExtension(imageDataUrl);
+        const fileName = `${slugify(title)}.${extension}`;
+        fileNameEl.textContent = fileName;
+        manualLink.href = imageDataUrl;
+        manualLink.setAttribute('download', fileName);
+
+        triggerDownload(imageDataUrl, fileName);
+
+        setTimeout(function () {
+          if (window.history.length > 1) {
+            window.history.back();
+            return;
+          }
+          window.close();
+        }, 600);
+      } catch (error) {
+        statusEl.textContent = 'Não foi possível preparar o download da imagem.';
+        manualLink.style.display = 'none';
+      }
+    })();
+  </script>
+</body>
+</html>

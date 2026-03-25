@@ -190,11 +190,18 @@ export interface EncomendaRow {
 export interface OcorrenciaItem {
   titulo: string;
   descricao: string;
+  imagemUrl?: string;
+  imagemBase64?: string;
+  imagemId?: string;
+  imagemNome?: string;
 }
+
+export type ReportShift = 'DIURNO' | 'NOTURNO';
 
 export interface ReportData {
   data: string;
   diaSemana: string;
+  tipoRelatorio: ReportShift;
   plantonista: string;
   efetivo: EfetivoRow[];
   visitas: VisitaRow[];

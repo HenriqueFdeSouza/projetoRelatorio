@@ -58,6 +58,31 @@ function leftTextBlock(doc: jsPDF, lines: string[], x: number, y: number, h: num
   });
 }
 
+function getShiftLabel(report: ReportData) {
+  return report.tipoRelatorio === 'NOTURNO' ? 'NOTURNO' : 'DIURNO';
+}
+
+
+
+function slugifyFileName(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'ocorrencia';
+}
+
+function buildOccurrenceDownloadPageUrl(report: ReportData, occurrenceIndex: number, occurrenceTitle: string) {
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  const params = new URLSearchParams({
+    reportDate: report.data || '',
+    title: occurrenceTitle || `ocorrencia_${occurrenceIndex + 1}`,
+    index: String(occurrenceIndex),
+  });
+  return `${baseUrl}/download-ocorrencia.html?${params.toString()}`;
+}
+
 export async function generatePDF(report: ReportData) {
   const doc = new jsPDF('p', 'mm', 'a4');
   const pageW = 210;
@@ -112,7 +137,7 @@ export async function generatePDF(report: ReportData) {
     setTextStyle(doc, 9, 'semibold', WHITE);
     doc.text('DEPARTAMENTO DE SEGURANÇA PATRIMONIAL', pageW / 2, 26.2, { align: 'center' });
     setTextStyle(doc, 12, 'bold', WHITE);
-    doc.text('RELATÓRIO DIURNO', pageW / 2, 31.6, { align: 'center' });
+    doc.text(`RELATÓRIO ${getShiftLabel(report)}`, pageW / 2, 31.6, { align: 'center' });
 
     const infoY = headerH + 2;
     const infoH = 9;
@@ -257,16 +282,18 @@ export async function generatePDF(report: ReportData) {
     doc.setFillColor(DARK_PURPLE);
     doc.setDrawColor(BORDER);
     doc.rect(marginL, y, contentW, 8, 'FD');
-    centerTextBlock(doc, ['OCORRÊNCIAS/INTERVENÇÕES DURANTE O PLANTÃO DIURNO'], marginL, y, contentW, 8, 8, 'bold', WHITE);
+    centerTextBlock(doc, [`OCORRÊNCIAS/INTERVENÇÕES DURANTE O PLANTÃO ${getShiftLabel(report)}`], marginL, y, contentW, 8, 8, 'bold', WHITE);
     y += 11;
 
     report.ocorrencias.forEach((oc, i) => {
       const title = `${i + 1} - ${oc.titulo || 'SEM TÍTULO'}`;
       const titleLines = doc.splitTextToSize(title, contentW) as string[];
       const descriptionLines = doc.splitTextToSize(oc.descricao || '-', contentW - 4) as string[];
+      const hasImage = Boolean(oc.imagemBase64);
       const titleH = Math.max(5, titleLines.length * 4);
       const descH = Math.max(4, descriptionLines.length * 3.8);
-      checkPage(titleH + descH + 9);
+      const attachmentH = hasImage ? 7 : 0;
+      checkPage(titleH + descH + attachmentH + 9);
 
       setTextStyle(doc, 8.5, 'bold', DARK_PURPLE);
       let titleY = y;
@@ -285,6 +312,13 @@ export async function generatePDF(report: ReportData) {
         doc.text(line, marginL + 1.5, descY);
         descY += 3.8;
       });
+
+      if (hasImage && oc.imagemBase64) {
+        const downloadUrl = buildOccurrenceDownloadPageUrl(report, i, oc.titulo || `ocorrencia_${i + 1}`);
+        setTextStyle(doc, 8, 'semibold', '#1D4ED8');
+        doc.textWithLink('Baixar imagem anexada', marginL + 1.5, descY + 1.5, { url: downloadUrl });
+        descY += 4.8;
+      }
 
       y = descY + 2.2;
     });
@@ -450,7 +484,7 @@ export async function generatePDF(report: ReportData) {
 
   drawOccurrencesSection();
 
-  const fileName = `Relatorio_Diurno_${report.data || 'sem_data'}.pdf`;
+  const fileName = `Relatorio_${getShiftLabel(report)}_${report.data || 'sem_data'}.pdf`;
   doc.save(fileName);
 }
 

@@ -1,23 +1,44 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, type ChangeEvent, type ClipboardEvent, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { storage, getDiaSemana, createEmptyReport } from '@/lib/storage';
 import {
-  ReportData, INTERFONE_OPTIONS,
+  ReportData, INTERFONE_OPTIONS, ReportShift,
   VisitaRow, GecRow, AchadoRow, AutorizacaoMenorRow, TentativaMenorRow,
   SaidaMaterialRow, TesourariaRow, EntradaGestorRow, EntregaHospedeRow,
   EntregaFornecedorRow, HelpdeskRow, EncomendaRow, OcorrenciaItem,
 } from '@/lib/types';
-import { ChevronDown, ChevronRight, Plus, Trash2, FileDown, RotateCcw } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Plus,
+  Trash2,
+  FileDown,
+  RotateCcw,
+  Check,
+  ChevronsUpDown,
+  Image as ImageIcon,
+  ExternalLink,
+} from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Cell } from 'recharts';
 import { toast } from '@/hooks/use-toast';
 import { generatePDF } from '@/lib/pdfExport';
 import { configuracoesAdmin } from '@/lib/configuracoesAdmin';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
 
 
 export default function Relatorio() {
-  const [report, setReport] = useState<ReportData>(storage.getReport());
+  const imageViewId = useMemo(() => new URLSearchParams(window.location.search).get('ocorrenciaImagem'), []);
+  const reportFromStorage = useMemo(() => storage.getReport(), []);
+  const occurrenceForImageView = useMemo(() => {
+    if (!imageViewId) return null;
+    return reportFromStorage.ocorrencias.find((oc) => oc.imagemId === imageViewId && oc.imagemBase64) || null;
+  }, [imageViewId, reportFromStorage]);
+
+  const [report, setReport] = useState<ReportData>(reportFromStorage);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -33,6 +54,47 @@ export default function Relatorio() {
       if (dia !== report.diaSemana) update({ diaSemana: dia });
     }
   }, [report.data]);
+
+  if (imageViewId) {
+    if (!occurrenceForImageView?.imagemBase64) {
+      return (
+        <div className="min-h-screen bg-background p-6 flex items-center justify-center">
+          <div className="max-w-lg w-full rounded-lg border border-border bg-card p-6 text-center space-y-3">
+            <h1 className="text-xl font-bold">Imagem da ocorrência não encontrada</h1>
+            <p className="text-sm text-muted-foreground">A imagem não está disponível neste navegador ou foi removida do relatório.</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-screen bg-background p-4 md:p-6">
+        <div className="mx-auto max-w-4xl space-y-4">
+          <div className="rounded-lg border border-border bg-card p-4">
+            <h1 className="text-xl font-bold">{occurrenceForImageView.titulo || 'Imagem da ocorrência'}</h1>
+            <p className="text-sm text-muted-foreground">Ocorrência aberta a partir do link do PDF.</p>
+          </div>
+
+          {occurrenceForImageView.descricao && (
+            <div className="rounded-lg border border-border bg-card p-4">
+              <div className="text-xs font-semibold uppercase text-muted-foreground mb-2">Descrição</div>
+              <p className="whitespace-pre-wrap break-words text-sm leading-6">{occurrenceForImageView.descricao}</p>
+            </div>
+          )}
+
+          <div className="rounded-lg border border-border bg-card p-4">
+            <div className="flex justify-center overflow-hidden rounded-md border border-border bg-muted/20 p-3">
+              <img
+                src={occurrenceForImageView.imagemBase64}
+                alt={occurrenceForImageView.titulo || 'Imagem da ocorrência'}
+                className="max-h-[72vh] w-auto max-w-full rounded-md object-contain"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const toggle = (key: string) => setOpenSections(p => ({ ...p, [key]: !p[key] }));
   const isOpen = (key: string) => openSections[key] !== false;
@@ -94,12 +156,66 @@ export default function Relatorio() {
     update({ [key]: (report[key] as unknown[]).filter((_, i) => i !== index) } as Partial<ReportData>);
   };
 
+  const readImageAsBase64 = (file: File) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Falha ao ler imagem'));
+    reader.readAsDataURL(file);
+  });
+
+  const createOccurrenceImageId = () => `oc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const getOccurrenceImageViewUrl = (imagemId?: string) => {
+    if (!imagemId) return '#';
+    return `${window.location.origin}${window.location.pathname}?ocorrenciaImagem=${encodeURIComponent(imagemId)}`;
+  };
+
+  const attachImageToOccurrence = async (file: File, index: number) => {
+    try {
+      const imagemBase64 = await readImageAsBase64(file);
+      const ocorrenciaAtual = report.ocorrencias[index];
+      if (!ocorrenciaAtual) return;
+      updateArray('ocorrencias', index, {
+        ...ocorrenciaAtual,
+        imagemBase64,
+        imagemId: ocorrenciaAtual.imagemId || createOccurrenceImageId(),
+        imagemNome: file.name || 'imagem-ocorrencia',
+      });
+    } catch {
+      toast({ title: 'Erro ao anexar imagem', variant: 'destructive' });
+    }
+  };
+
+  const handleOccurrenceImageUpload = async (event: ChangeEvent<HTMLInputElement>, index: number) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    await attachImageToOccurrence(file, index);
+    event.target.value = '';
+  };
+
+  const handleOccurrencePaste = async (event: ClipboardEvent<HTMLTextAreaElement>, index: number) => {
+    const items = Array.from(event.clipboardData?.items || []) as DataTransferItem[];
+    const imageItem = items.find((item: DataTransferItem) => item.type.startsWith('image/'));
+
+    if (!imageItem) return;
+
+    event.preventDefault();
+    const file = imageItem.getAsFile();
+    if (!file) return;
+
+    try {
+      await attachImageToOccurrence(file, index);
+    } catch {
+      toast({ title: 'Erro ao colar imagem', variant: 'destructive' });
+    }
+  };
+
   return (
     <div className="fade-in" ref={reportRef}>
       {/* Action bar */}
       <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
         <div className="page-header rounded-lg flex-1 min-w-[300px]">
-          <h1 className="text-xl font-bold">RELATÓRIO DIURNO</h1>
+          <h1 className="text-xl font-bold">RELATÓRIO {report.tipoRelatorio}</h1>
           <p className="text-xs opacity-80">Departamento de Segurança Patrimonial</p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -110,7 +226,7 @@ export default function Relatorio() {
       </div>
 
       {/* Header fields */}
-      <div className="bg-card rounded-lg border border-border p-4 mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="bg-card rounded-lg border border-border p-4 mb-4 grid grid-cols-1 md:grid-cols-4 gap-4">
         <div>
           <label className="text-xs font-semibold text-muted-foreground uppercase">Data</label>
           <Input type="date" value={report.data} onChange={e => update({ data: e.target.value })} />
@@ -120,19 +236,24 @@ export default function Relatorio() {
           <Input value={report.diaSemana} readOnly className="bg-muted" />
         </div>
         <div>
-          <label className="text-xs font-semibold text-muted-foreground uppercase">Plantonista</label>
+          <label className="text-xs font-semibold text-muted-foreground uppercase">Tipo de Relatório</label>
           <select
-            value={report.plantonista}
-            onChange={e => update({ plantonista: e.target.value })}
+            value={report.tipoRelatorio}
+            onChange={e => update({ tipoRelatorio: e.target.value as ReportShift })}
             className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
-            <option value="">Selecione...</option>
-            {plantonistas.map(p => <option key={p.id} value={p.nome}>{p.nome} — {p.cargo}</option>)}
-            
+            <option value="DIURNO">DIURNO</option>
+            <option value="NOTURNO">NOTURNO</option>
           </select>
-          {report.plantonista === '__outro' && (
-            <Input className="mt-1" placeholder="Digite o nome..." onChange={e => update({ plantonista: e.target.value })} />
-          )}
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-muted-foreground uppercase">Plantonista</label>
+          <FreeTextCombobox
+            value={report.plantonista}
+            onChange={value => update({ plantonista: value })}
+            options={plantonistas.map(p => ({ value: p.nome, label: `${p.nome} — ${p.cargo}` }))}
+            placeholder="Digite..."
+          />
         </div>
       </div>
 
@@ -146,24 +267,17 @@ export default function Relatorio() {
                 <tr key={i}>
                   <td className="px-3 py-2 border border-border font-medium">{row.funcao}</td>
                   <td className="px-3 py-2 border border-border">
-                    <select
+                    <FreeTextCombobox
                       value={row.nome}
-                      onChange={e => {
-                        const val = e.target.value;
-                        const c = configuracoesAdmin.efetivo.find(c => c.nome === val);
-const arr = [...report.efetivo];
-arr[i] = { ...row, nome: val, horario: c?.horario || row.horario };
-update({ efetivo: arr });
+                      onChange={value => {
+                        const c = configuracoesAdmin.efetivo.find(c => c.nome === value);
+                        const arr = [...report.efetivo];
+                        arr[i] = { ...row, nome: value, horario: c?.horario || row.horario };
+                        update({ efetivo: arr });
                       }}
-                      className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
-                    >
-                      <option value="">Selecione...</option>
-                      {configuracoesAdmin.efetivo.map((c, idx) => (
-  <option key={idx} value={c.nome}>{c.nome}</option>
-))}
-                      
-                    </select>
-                    
+                      options={configuracoesAdmin.efetivo.filter(c => c.nome?.trim()).map((c, idx) => ({ value: c.nome, label: c.nome || `Colaborador ${idx + 1}` }))}
+                      placeholder="Digite..."
+                    />
                   </td>
                   <td className="px-3 py-2 border border-border">
                     <TimeInput value={row.horario} onChange={v => { const arr = [...report.efetivo]; arr[i] = { ...row, horario: v }; update({ efetivo: arr }); }} placeholder="07:00-19:00" allowRange />
@@ -185,17 +299,15 @@ update({ efetivo: arr });
             renderRow={(row, i) => (
               <>
                 <td className="px-3 py-2 border border-border">
-                  <select
-                    value={supervisoresCastelo.some(s => s.nome === row.nome) ? row.nome : ''}
-                    onChange={e => {
-                      const s = supervisoresCastelo.find(s => s.nome === e.target.value);
-                      updateArray('visitas', i, { ...row, nome: e.target.value, funcao: s?.funcao || row.funcao });
+                  <FreeTextCombobox
+                    value={row.nome}
+                    onChange={value => {
+                      const s = supervisoresCastelo.find(s => s.nome === value);
+                      updateArray('visitas', i, { ...row, nome: value, funcao: s?.funcao || row.funcao });
                     }}
-                    className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
-                  >
-                    <option value="">Selecione...</option>
-                    {supervisoresCastelo.map(s => <option key={s.id} value={s.nome}>{s.nome}</option>)}
-                  </select>
+                    options={supervisoresCastelo.map(s => ({ value: s.nome, label: s.nome }))}
+                    placeholder="Digite..."
+                  />
                 </td>
                 <TdInput value={row.funcao} onChange={v => updateArray('visitas', i, { ...row, funcao: v })} />
                 <TdInput value={row.entrada} onChange={v => updateArray('visitas', i, { ...row, entrada: v })} placeholder="HH:MM" isTime />
@@ -274,16 +386,20 @@ update({ efetivo: arr });
                   <td className="px-3 py-2 border border-border font-medium">{row.elevador}</td>
                   <td className="px-3 py-2 border border-border"><TimeInput value={row.horario} onChange={v => { const arr = [...report.elevadorTeste]; arr[i] = { ...row, horario: v }; update({ elevadorTeste: arr }); }} /></td>
                   <td className="px-3 py-2 border border-border">
-                    <select value={row.interfone} onChange={e => { const arr = [...report.elevadorTeste]; arr[i] = { ...row, interfone: e.target.value }; update({ elevadorTeste: arr }); }} className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm">
-                      <option value="">-</option>
-                      {INTERFONE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
+                    <FreeTextCombobox
+                      value={row.interfone}
+                      onChange={value => { const arr = [...report.elevadorTeste]; arr[i] = { ...row, interfone: value }; update({ elevadorTeste: arr }); }}
+                      options={INTERFONE_OPTIONS.map(o => ({ value: o, label: o }))}
+                      placeholder="Digite..."
+                    />
                   </td>
                   <td className="px-3 py-2 border border-border">
-                    <select value={row.alarme} onChange={e => { const arr = [...report.elevadorTeste]; arr[i] = { ...row, alarme: e.target.value }; update({ elevadorTeste: arr }); }} className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm">
-                      <option value="">-</option>
-                      {INTERFONE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
+                    <FreeTextCombobox
+                      value={row.alarme}
+                      onChange={value => { const arr = [...report.elevadorTeste]; arr[i] = { ...row, alarme: value }; update({ elevadorTeste: arr }); }}
+                      options={INTERFONE_OPTIONS.map(o => ({ value: o, label: o }))}
+                      placeholder="Digite..."
+                    />
                   </td>
                   <td className="px-3 py-2 border border-border"><Input value={row.agente} onChange={e => { const arr = [...report.elevadorTeste]; arr[i] = { ...row, agente: e.target.value }; update({ elevadorTeste: arr }); }} /></td>
                 </tr>
@@ -332,17 +448,15 @@ update({ efetivo: arr });
             renderRow={(row, i) => (
               <>
                 <td className="px-3 py-2 border border-border">
-                  <select
+                  <FreeTextCombobox
                     value={row.empresa}
-                    onChange={e => {
-                      const f = fornecedores.find(f => f.nome === e.target.value);
-                      updateArray('gec', i, { ...row, empresa: e.target.value, setor: f?.setor || row.setor });
+                    onChange={value => {
+                      const f = fornecedores.find(fornecedor => fornecedor.nome === value);
+                      updateArray('gec', i, { ...row, empresa: value, setor: f?.setor || row.setor });
                     }}
-                    className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
-                  >
-                    <option value="">Selecione...</option>
-                    {fornecedores.map(f => <option key={f.id} value={f.nome}>{f.nome}</option>)}
-                  </select>
+                    options={fornecedores.map(f => ({ value: f.nome, label: f.nome }))}
+                    placeholder="Selecione ou digite..."
+                  />
                 </td>
                 <TdInput value={row.quantidade} onChange={v => updateArray('gec', i, { ...row, quantidade: v })} />
                 <TdSectorSelect value={row.setor} onChange={v => updateArray('gec', i, { ...row, setor: v })} setores={setores} />
@@ -464,17 +578,15 @@ update({ efetivo: arr });
               <>
                 <TdInput value={row.entrada} onChange={v => updateArray('entradaGestores', i, { ...row, entrada: v })} placeholder="HH:MM" isTime />
                 <td className="px-3 py-2 border border-border">
-                  <select
-                    value={gestores.some(g => g.nome === row.nome) ? row.nome : ''}
-                    onChange={e => {
-                      const g = gestores.find(g => g.nome === e.target.value);
-                      updateArray('entradaGestores', i, { ...row, nome: e.target.value, setorCargo: g?.setorCargo || row.setorCargo });
+                  <FreeTextCombobox
+                    value={row.nome}
+                    onChange={value => {
+                      const g = gestores.find(gestor => gestor.nome === value);
+                      updateArray('entradaGestores', i, { ...row, nome: value, setorCargo: g?.setorCargo || row.setorCargo });
                     }}
-                    className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
-                  >
-                    <option value="">Selecione...</option>
-                    {gestores.map(g => <option key={g.id} value={g.nome}>{g.nome}</option>)}
-                  </select>
+                    options={gestores.map(g => ({ value: g.nome, label: g.nome }))}
+                    placeholder="Selecione ou digite..."
+                  />
                 </td>
                 <TdInput value={row.setorCargo} onChange={v => updateArray('entradaGestores', i, { ...row, setorCargo: v })} />
                 <TdInput value={row.saida} onChange={v => updateArray('entradaGestores', i, { ...row, saida: v })} placeholder="HH:MM" isTime />
@@ -494,10 +606,12 @@ update({ efetivo: arr });
               <>
                 <td className="px-3 py-2 border border-border text-center font-medium w-16">{String(i + 1).padStart(2, '0')}</td>
                 <td className="px-3 py-2 border border-border">
-                  <select value={row.tipo} onChange={e => updateArray('entregaHospedes', i, { ...row, tipo: e.target.value })} className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm">
-                    <option value="">-</option>
-                    {tiposEntrega.map(t => <option key={t.id} value={t.nome}>{t.nome}</option>)}
-                  </select>
+                  <FreeTextCombobox
+                    value={row.tipo}
+                    onChange={value => updateArray('entregaHospedes', i, { ...row, tipo: value })}
+                    options={tiposEntrega.map(t => ({ value: t.nome, label: t.nome }))}
+                    placeholder="Digite..."
+                  />
                 </td>
                 <TdInput value={row.uh} onChange={v => updateArray('entregaHospedes', i, { ...row, uh: v })} placeholder="0-000" />
               </>
@@ -516,17 +630,15 @@ update({ efetivo: arr });
               <>
                 <td className="px-3 py-2 border border-border text-center font-medium w-16">{String(i + 1).padStart(2, '0')}</td>
                 <td className="px-3 py-2 border border-border">
-                  <select
+                  <FreeTextCombobox
                     value={row.empresa}
-                    onChange={e => {
-                      const p = prestadores.find(p => p.nome === e.target.value);
-                      updateArray('entregaFornecedores', i, { ...row, empresa: e.target.value, setor: p?.setor || row.setor });
+                    onChange={value => {
+                      const p = prestadores.find(prestador => prestador.nome === value);
+                      updateArray('entregaFornecedores', i, { ...row, empresa: value, setor: p?.setor || row.setor });
                     }}
-                    className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
-                  >
-                    <option value="">Selecione...</option>
-                    {prestadores.map(p => <option key={p.id} value={p.nome}>{p.nome}</option>)}
-                  </select>
+                    options={prestadores.map(p => ({ value: p.nome, label: p.nome }))}
+                    placeholder="Selecione ou digite..."
+                  />
                 </td>
                 <TdSectorSelect value={row.setor} onChange={v => updateArray('entregaFornecedores', i, { ...row, setor: v })} setores={setores} />
               </>
@@ -590,7 +702,53 @@ update({ efetivo: arr });
                   <Input value={oc.titulo} onChange={e => updateArray('ocorrencias', i, { ...oc, titulo: e.target.value })} placeholder="Título da ocorrência" className="font-semibold" />
                   <Button variant="ghost" size="sm" onClick={() => removeFromArray('ocorrencias', i)} className="text-destructive h-8 w-8 p-0"><Trash2 className="w-4 h-4" /></Button>
                 </div>
-                <Textarea value={oc.descricao} onChange={e => updateArray('ocorrencias', i, { ...oc, descricao: e.target.value })} placeholder="Descreva a ocorrência..." rows={3} />
+                <Textarea
+                  value={oc.descricao}
+                  onChange={e => updateArray('ocorrencias', i, { ...oc, descricao: e.target.value })}
+                  onPaste={event => handleOccurrencePaste(event, i)}
+                  placeholder="Descreva a ocorrência..."
+                  rows={3}
+                />
+                <div className="mt-3 space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm">
+                      <ImageIcon className="h-4 w-4" />
+                      Anexar imagem
+                      <input type="file" accept="image/*" className="hidden" onChange={event => handleOccurrenceImageUpload(event, i)} />
+                    </label>
+
+                    {oc.imagemBase64 && oc.imagemId && (
+                      <>
+                        <a
+                          href={getOccurrenceImageViewUrl(oc.imagemId)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm text-primary hover:bg-muted"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                          Abrir imagem local
+                        </a>
+
+                        <div className="relative inline-flex">
+                          <a href={getOccurrenceImageViewUrl(oc.imagemId)} target="_blank" rel="noreferrer">
+                            <img
+                              src={oc.imagemBase64}
+                              alt={oc.imagemNome || 'Imagem da ocorrência'}
+                              className="max-h-[80px] max-w-[80px] rounded border border-border object-cover"
+                            />
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => updateArray('ocorrencias', i, { ...oc, imagemBase64: undefined, imagemId: undefined, imagemNome: undefined })}
+                            className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-destructive text-destructive-foreground text-xs shadow"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             ))}
             <Button variant="outline" size="sm" onClick={() => addToArray('ocorrencias', { titulo: '', descricao: '' })} className="gap-1">
@@ -610,7 +768,7 @@ update({ efetivo: arr });
 
 // ─── Shared Components ───
 
-function Section({ title, isOpen, toggle, children }: { id: string; title: string; isOpen: boolean; toggle: () => void; children: React.ReactNode }) {
+function Section({ title, isOpen, toggle, children }: { id: string; title: string; isOpen: boolean; toggle: () => void; children: ReactNode }) {
   return (
     <div>
       <div className="section-header" onClick={toggle}>
@@ -622,31 +780,84 @@ function Section({ title, isOpen, toggle, children }: { id: string; title: strin
   );
 }
 
+function normalizeTimeDigits(value: string) {
+  return value.replace(/\D/g, '').slice(0, 4);
+}
+
+function formatSingleTimeValue(value: string) {
+  const digits = normalizeTimeDigits(value);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
+}
+
 function formatTimeValue(value: string, allowRange = false) {
-  const digits = value.replace(/\D/g, '').slice(0, allowRange ? 8 : 4);
-  if (!allowRange) {
-    if (digits.length <= 2) return digits;
-    return `${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
+  const normalized = value.replace(/\s+/g, '');
+  if (!allowRange) return formatSingleTimeValue(normalized);
+
+  const [startValue = '', endValue = ''] = normalized.split('-');
+  const startFormatted = formatSingleTimeValue(startValue);
+  const endDigits = normalizeTimeDigits(endValue);
+  const endFormatted = endDigits.length <= 2 ? endDigits : `${endDigits.slice(0, 2)}:${endDigits.slice(2, 4)}`;
+
+  if (!normalized.includes('-') && normalizeTimeDigits(normalized).length <= 4) {
+    return startFormatted;
   }
-  if (digits.length <= 4) {
-    if (digits.length <= 2) return digits;
-    return `${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
+
+  if (normalized.includes('-')) {
+    return `${startFormatted}-${endFormatted}`;
   }
-  const first = `${digits.slice(0, 2)}:${digits.slice(2, 4)}`;
-  const remaining = digits.slice(4, 8);
-  if (remaining.length <= 2) return `${first}-${remaining}`;
-  return `${first}-${remaining.slice(0, 2)}:${remaining.slice(2, 4)}`;
+
+  const digits = normalized.replace(/\D/g, '').slice(0, 8);
+  if (digits.length <= 4) return formatSingleTimeValue(digits);
+  return `${formatSingleTimeValue(digits.slice(0, 4))}-${formatSingleTimeValue(digits.slice(4, 8))}`;
+}
+
+function isValidTime(value: string) {
+  if (!/^\d{2}:\d{2}$/.test(value)) return false;
+  const [hour, minute] = value.split(':').map(Number);
+  return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+}
+
+function validateTimeValue(value: string, allowRange = false) {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  if (!allowRange) return isValidTime(trimmed);
+
+  const [start, end] = trimmed.split('-');
+  if (!start || !end) return false;
+  return isValidTime(start) && isValidTime(end);
 }
 
 function TimeInput({ value, onChange, placeholder, allowRange = false }: { value: string; onChange: (v: string) => void; placeholder?: string; allowRange?: boolean }) {
+  const [touched, setTouched] = useState(false);
+  const formattedValue = useMemo(() => formatTimeValue(value, allowRange), [allowRange, value]);
+  const digitsCount = value.replace(/\D/g, '').length;
+  const shouldValidate = touched || digitsCount >= (allowRange ? 8 : 4);
+  const isValid = validateTimeValue(formattedValue, allowRange);
+  const showError = shouldValidate && formattedValue !== '' && !isValid;
+
+  useEffect(() => {
+    if (formattedValue !== value) {
+      onChange(formattedValue);
+    }
+  }, [formattedValue, onChange, value]);
+
   return (
-    <Input
-      value={value}
-      onChange={e => onChange(formatTimeValue(e.target.value, allowRange))}
-      placeholder={placeholder || 'HH:MM'}
-      inputMode="numeric"
-      maxLength={allowRange ? 11 : 5}
-    />
+    <div>
+      <Input
+        value={formattedValue}
+        onChange={e => onChange(formatTimeValue(e.target.value, allowRange))}
+        onBlur={() => {
+          setTouched(true);
+          onChange(formatTimeValue(formattedValue, allowRange));
+        }}
+        placeholder={placeholder || 'HH:MM'}
+        inputMode="numeric"
+        maxLength={allowRange ? 11 : 5}
+        className={showError ? 'border-red-500 focus-visible:ring-red-500' : undefined}
+      />
+      {showError && <p className="mt-1 text-xs text-red-500">Horário inválido</p>}
+    </div>
   );
 }
 
@@ -672,26 +883,119 @@ function TdInput({ value, onChange, placeholder, isTime = false }: { value: stri
 }
 
 function TdSectorSelect({ value, onChange, setores }: { value: string; onChange: (v: string) => void; setores: { id: string; nome: string }[] }) {
-  const isCustom = value === '__outro__' || (value !== '' && !setores.some(setor => setor.nome === value));
-
   return (
     <td className="px-3 py-2 border border-border">
-      <select
-        value={isCustom ? '__outro' : value}
-        onChange={e => onChange(e.target.value === '__outro' ? '__outro__' : e.target.value)}
-        className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm"
-      >
-        <option value="">Selecione...</option>
-        {setores.map(setor => <option key={setor.id} value={setor.nome}>{setor.nome}</option>)}
-        <option value="__outro">Outro</option>
-      </select>
-      {isCustom && (
-        <Input className="mt-1" value={value === '__outro__' ? '' : value} placeholder="Digite o setor..." onChange={e => onChange(e.target.value)} />
-      )}
+      <FreeTextCombobox
+        value={value}
+        onChange={onChange}
+        options={setores.map(setor => ({ value: setor.nome, label: setor.nome }))}
+        placeholder="Digite..."
+      />
     </td>
   );
 }
 
+type ComboboxOption = { value: string; label: string };
+
+function FreeTextCombobox({
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: ComboboxOption[];
+  placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [inputValue, setInputValue] = useState(value);
+
+  useEffect(() => {
+    setInputValue(value);
+  }, [value]);
+
+  const filteredOptions = useMemo(() => {
+    const search = inputValue.trim().toLowerCase();
+    if (!search) return options;
+    return options.filter(option => option.label.toLowerCase().includes(search) || option.value.toLowerCase().includes(search));
+  }, [inputValue, options]);
+
+  const commitCustomValue = () => {
+    onChange(inputValue.trim());
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <div className="flex w-full items-stretch gap-2">
+        <Input
+          value={inputValue}
+          onChange={event => {
+            setInputValue(event.target.value);
+          }}
+          onBlur={() => {
+            window.setTimeout(() => {
+              commitCustomValue();
+            }, 120);
+          }}
+          onKeyDown={event => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              commitCustomValue();
+            }
+          }}
+          placeholder={placeholder}
+          className="w-full h-10"
+        />
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="h-10 w-10 shrink-0 px-0"
+            type="button"
+          >
+            <ChevronsUpDown className="h-4 w-4 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+      </div>
+      <PopoverContent className="w-[320px] max-w-[var(--radix-popper-available-width)] p-0" align="end">
+        <Command shouldFilter={false}>
+          <CommandInput value={inputValue} onValueChange={setInputValue} placeholder="Pesquisar..." />
+          <CommandList>
+            <CommandEmpty>Nenhum item encontrado.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value={`__custom__${inputValue}`}
+                onSelect={() => {
+                  commitCustomValue();
+                  setOpen(false);
+                }}
+              >
+                <Check className={cn('mr-2 h-4 w-4', filteredOptions.some(option => option.value === value) ? 'opacity-0' : 'opacity-100')} />
+                Digitar
+              </CommandItem>
+              {filteredOptions.map(option => (
+                <CommandItem
+                  key={option.value}
+                  value={option.value}
+                  onSelect={() => {
+                    onChange(option.value);
+                    setInputValue(option.value);
+                    setOpen(false);
+                  }}
+                >
+                  <Check className={cn('mr-2 h-4 w-4', value === option.value ? 'opacity-100' : 'opacity-0')} />
+                  {option.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 function OccupancyStats({ ocupacao }: { ocupacao: ReportData['ocupacao'] }) {
   const colors = {
     atual: '#7B2D8B',
@@ -734,7 +1038,7 @@ function OccupancyStats({ ocupacao }: { ocupacao: ReportData['ocupacao'] }) {
 }
 
 function DynamicTable<T>({ columns, rows, renderRow, onAdd, onRemove }: {
-  columns: string[]; rows: T[]; renderRow: (row: T, index: number) => React.ReactNode; onAdd: () => void; onRemove: (index: number) => void;
+  columns: string[]; rows: T[]; renderRow: (row: T, index: number) => ReactNode; onAdd: () => void; onRemove: (index: number) => void;
 }) {
   return (
     <div>

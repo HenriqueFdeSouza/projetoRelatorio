@@ -125,7 +125,7 @@ export const storage = {
   getElevadores: () => get<Elevador[]>(KEYS.elevadores, defaultElevadores()),
   setElevadores: (v: Elevador[]) => set(KEYS.elevadores, v),
 
-  getReport: (): ReportData => get<ReportData>(KEYS.report, createEmptyReport()),
+  getReport: (): ReportData => ({ ...createEmptyReport(), ...get<Partial<ReportData>>(KEYS.report, {}) } as ReportData),
   setReport: (v: ReportData) => set(KEYS.report, v),
   clearReport: () => set(KEYS.report, createEmptyReport()),
 };
@@ -138,6 +138,7 @@ export function createEmptyReport(): ReportData {
   return {
     data: new Date().toISOString().split('T')[0],
     diaSemana: getDiaSemana(new Date()),
+    tipoRelatorio: 'DIURNO',
     plantonista: '',
     efetivo: funcoes.map(f => ({ funcao: f.nome, nome: '', horario: '', radio: '-' })),
     visitas: [],
