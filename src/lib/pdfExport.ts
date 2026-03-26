@@ -247,7 +247,7 @@ export async function generatePDF(report: ReportData) {
       { label: 'CHECK-OUT', value: Number(report.ocupacao.checkout) || 0, color: '#FF9800' },
     ];
 
-    const boxH = 29;
+    const boxH = 34;
     checkPage(boxH + 2);
     doc.setFillColor(WHITE);
     doc.setDrawColor(BORDER);
@@ -270,6 +270,7 @@ export async function generatePDF(report: ReportData) {
       setTextStyle(doc, 7.5, 'bold', item.color);
       doc.text(`${item.value}`, marginL + leftLabelW + barMaxW + 6, localY + 2.9, { align: 'right' });
       localY += 5.4;
+      // localY += 6.4;
     });
 
     y += boxH + sectionGap;
@@ -293,7 +294,12 @@ export async function generatePDF(report: ReportData) {
       const titleH = Math.max(5, titleLines.length * 4);
       const descH = Math.max(4, descriptionLines.length * 3.8);
       const attachmentH = hasImage ? 7 : 0;
-      checkPage(titleH + descH + attachmentH + 9);
+      const neededSpace = titleH + descH + attachmentH + 4;
+
+    if (y + neededSpace > pageH - 20) {
+         doc.addPage();
+          y = 12;
+      }
 
       setTextStyle(doc, 8.5, 'bold', DARK_PURPLE);
       let titleY = y;
