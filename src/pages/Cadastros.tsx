@@ -3,9 +3,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogClose } from '@/components/ui/dialog';
-import { storage, genId } from '@/lib/storage';
 import { FuncaoSeguranca, Colaborador, SupervisorCastelo, Fornecedor, Gestor, Plantonista, TipoEntrega, Setor } from '@/lib/types';
 import { Plus, Trash2 } from 'lucide-react';
+import {
+  getFuncoes, addFuncao, deleteFuncao,
+  getColaboradores, addColaborador, deleteColaborador,
+  getSupervisoresCastelo, addSupervisorCastelo, deleteSupervisorCastelo,
+  getFornecedores, addFornecedor, deleteFornecedor,
+  getGestores, addGestor, deleteGestor,
+  getPlantonistas, addPlantonista, deletePlantonista,
+  getTiposEntrega, addTipoEntrega, deleteTipoEntrega,
+  getPrestadores, addPrestador, deletePrestador,
+  getSetores, addSetor, deleteSetor,
+} from '@/lib/api/cadastros'
 
 export default function Cadastros() {
   return (
@@ -44,15 +54,50 @@ export default function Cadastros() {
 
 // ─── ABA 1: Funções de Segurança ───
 function FuncoesTab() {
-  const [items, setItems] = useState<FuncaoSeguranca[]>(storage.getFuncoes());
-  const [newName, setNewName] = useState('');
-  useEffect(() => { storage.setFuncoes(items); }, [items]);
+  const [items, setItems] = useState<FuncaoSeguranca[]>([])
+  const [newName, setNewName] = useState('')
 
-  const add = () => {
-    if (!newName.trim()) return;
-    setItems([...items, { id: genId(), nome: newName.trim() }]);
-    setNewName('');
-  };
+  // 🔥 CARREGA DO SUPABASE
+  useEffect(() => {
+    async function carregar() {
+      try {
+        const data = await getFuncoes()
+        setItems(data)
+      } catch (error) {
+        console.error('Erro ao carregar funções:', error)
+      }
+    }
+
+    carregar()
+  }, [])
+
+  // 🔥 ADICIONAR
+  const add = async () => {
+    if (!newName.trim()) return
+
+    try {
+      await addFuncao(newName.trim())
+
+      const data = await getFuncoes()
+      setItems(data)
+
+      setNewName('')
+    } catch (error) {
+      console.error('Erro ao adicionar:', error)
+    }
+  }
+
+  // 🔥 DELETAR
+  const remove = async (id: string) => {
+    try {
+      await deleteFuncao(id)
+
+      const data = await getFuncoes()
+      setItems(data)
+    } catch (error) {
+      console.error('Erro ao deletar:', error)
+    }
+  }
 
   return (
     <CrudCard
@@ -60,39 +105,68 @@ function FuncoesTab() {
       description="Funções que aparecem na seção 1.1 (Efetivo de Segurança)"
       addDialog={
         <AddDialog title="Adicionar Função" onAdd={add}>
-          <Input placeholder="Nome da função" value={newName} onChange={e => setNewName(e.target.value)} />
+          <Input
+            placeholder="Nome da função"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+          />
         </AddDialog>
       }
     >
       <table className="report-table">
-        <thead><tr><th>Nome da Função</th><th className="w-12">Ação</th></tr></thead>
+        <thead>
+          <tr>
+            <th>Nome da Função</th>
+            <th className="w-12">Ação</th>
+          </tr>
+        </thead>
         <tbody>
           {items.length === 0 && <EmptyRow cols={2} />}
-          {items.map((item, i) => (
+          {items.map((item) => (
             <tr key={item.id}>
               <td className="px-3 py-2 border border-border">{item.nome}</td>
               <td className="px-2 py-2 border border-border">
-                <DeleteBtn onClick={() => setItems(items.filter((_, idx) => idx !== i))} />
+                <DeleteBtn onClick={() => remove(item.id)} />
               </td>
             </tr>
           ))}
         </tbody>
       </table>
     </CrudCard>
-  );
+  )
 }
 
 // ─── ABA 2: Colaboradores ───
 function ColaboradoresTab() {
-  const [items, setItems] = useState<Colaborador[]>(storage.getColaboradores());
+  const [items, setItems] = useState<Colaborador[]>([]);
   const [nome, setNome] = useState('');
   const [horario, setHorario] = useState('');
-  useEffect(() => { storage.setColaboradores(items); }, [items]);
 
-  const add = () => {
+  useEffect(() => {
+    async function carregar() {
+      try {
+        const data = await getColaboradores();
+        setItems(data);
+      } catch (error) {
+        console.error('Erro ao carregar colaboradores:', error);
+      }
+    }
+
+    carregar();
+  }, []);
+
+  const add = async () => {
     if (!nome.trim()) return;
-    setItems([...items, { id: genId(), nome: nome.trim(), funcao: '', horario: horario.trim(), setor: '' }]);
-    setNome(''); setHorario('');
+
+    try {
+      await addColaborador(nome.trim(), horario.trim());
+      const data = await getColaboradores();
+      setItems(data);
+      setNome('');
+      setHorario('');
+    } catch (error) {
+      console.error('Erro ao adicionar colaborador:', error);
+    }
   };
 
   return (
@@ -115,7 +189,15 @@ function ColaboradoresTab() {
               <td className="px-3 py-2 border border-border">{item.nome}</td>
               <td className="px-3 py-2 border border-border">{item.horario || '-'}</td>
               <td className="px-2 py-2 border border-border">
-                <DeleteBtn onClick={() => setItems(items.filter((_, idx) => idx !== i))} />
+                <DeleteBtn onClick={async () => {
+                  try {
+                    await deleteColaborador(item.id);
+                    const data = await getColaboradores();
+                    setItems(data);
+                  } catch (error) {
+                    console.error('Erro ao deletar colaborador:', error);
+                  }
+                }} />
               </td>
             </tr>
           ))}
@@ -127,15 +209,35 @@ function ColaboradoresTab() {
 
 // ─── ABA 3: Supervisores Castelo Borges ───
 function SupervisoresTab() {
-  const [items, setItems] = useState<SupervisorCastelo[]>(storage.getSupervisoresCastelo());
+  const [items, setItems] = useState<SupervisorCastelo[]>([]);
   const [nome, setNome] = useState('');
   const [funcao, setFuncao] = useState('');
-  useEffect(() => { storage.setSupervisoresCastelo(items); }, [items]);
 
-  const add = () => {
+  useEffect(() => {
+    async function carregar() {
+      try {
+        const data = await getSupervisoresCastelo();
+        setItems(data);
+      } catch (error) {
+        console.error('Erro ao carregar supervisores:', error);
+      }
+    }
+
+    carregar();
+  }, []);
+
+  const add = async () => {
     if (!nome.trim()) return;
-    setItems([...items, { id: genId(), nome: nome.trim(), funcao: funcao.trim() }]);
-    setNome(''); setFuncao('');
+
+    try {
+      await addSupervisorCastelo(nome.trim(), funcao.trim());
+      const data = await getSupervisoresCastelo();
+      setItems(data);
+      setNome('');
+      setFuncao('');
+    } catch (error) {
+      console.error('Erro ao adicionar supervisor:', error);
+    }
   };
 
   return (
@@ -158,7 +260,15 @@ function SupervisoresTab() {
               <td className="px-3 py-2 border border-border">{item.nome}</td>
               <td className="px-3 py-2 border border-border">{item.funcao || '-'}</td>
               <td className="px-2 py-2 border border-border">
-                <DeleteBtn onClick={() => setItems(items.filter((_, idx) => idx !== i))} />
+                <DeleteBtn onClick={async () => {
+                  try {
+                    await deleteSupervisorCastelo(item.id);
+                    const data = await getSupervisoresCastelo();
+                    setItems(data);
+                  } catch (error) {
+                    console.error('Erro ao deletar supervisor:', error);
+                  }
+                }} />
               </td>
             </tr>
           ))}
@@ -170,14 +280,33 @@ function SupervisoresTab() {
 
 // ─── ABA 4: Empresas / Fornecedores ───
 function EmpresasTab() {
-  const [items, setItems] = useState<Fornecedor[]>(storage.getFornecedores());
+  const [items, setItems] = useState<Fornecedor[]>([]);
   const [nome, setNome] = useState('');
-  useEffect(() => { storage.setFornecedores(items); }, [items]);
 
-  const add = () => {
+  useEffect(() => {
+    async function carregar() {
+      try {
+        const data = await getFornecedores();
+        setItems(data);
+      } catch (error) {
+        console.error('Erro ao carregar empresas:', error);
+      }
+    }
+
+    carregar();
+  }, []);
+
+  const add = async () => {
     if (!nome.trim()) return;
-    setItems([...items, { id: genId(), nome: nome.trim(), setor: '' }]);
-    setNome('');
+
+    try {
+      await addFornecedor(nome.trim());
+      const data = await getFornecedores();
+      setItems(data);
+      setNome('');
+    } catch (error) {
+      console.error('Erro ao adicionar empresa:', error);
+    }
   };
 
   return (
@@ -198,7 +327,15 @@ function EmpresasTab() {
             <tr key={item.id}>
               <td className="px-3 py-2 border border-border">{item.nome}</td>
               <td className="px-2 py-2 border border-border">
-                <DeleteBtn onClick={() => setItems(items.filter((_, idx) => idx !== i))} />
+                <DeleteBtn onClick={async () => {
+                  try {
+                    await deleteFornecedor(item.id);
+                    const data = await getFornecedores();
+                    setItems(data);
+                  } catch (error) {
+                    console.error('Erro ao deletar empresa:', error);
+                  }
+                }} />
               </td>
             </tr>
           ))}
@@ -210,15 +347,35 @@ function EmpresasTab() {
 
 // ─── ABA 5: Gestores / Líderes ───
 function GestoresTab() {
-  const [items, setItems] = useState<Gestor[]>(storage.getGestores());
+  const [items, setItems] = useState<Gestor[]>([]);
   const [nome, setNome] = useState('');
   const [setor, setSetor] = useState('');
-  useEffect(() => { storage.setGestores(items); }, [items]);
 
-  const add = () => {
+  useEffect(() => {
+    async function carregar() {
+      try {
+        const data = await getGestores();
+        setItems(data);
+      } catch (error) {
+        console.error('Erro ao carregar gestores:', error);
+      }
+    }
+
+    carregar();
+  }, []);
+
+  const add = async () => {
     if (!nome.trim()) return;
-    setItems([...items, { id: genId(), nome: nome.trim(), setorCargo: setor.trim() }]);
-    setNome(''); setSetor('');
+
+    try {
+      await addGestor(nome.trim(), setor.trim());
+      const data = await getGestores();
+      setItems(data);
+      setNome('');
+      setSetor('');
+    } catch (error) {
+      console.error('Erro ao adicionar gestor:', error);
+    }
   };
 
   return (
@@ -241,7 +398,15 @@ function GestoresTab() {
               <td className="px-3 py-2 border border-border">{item.nome}</td>
               <td className="px-3 py-2 border border-border">{item.setorCargo || '-'}</td>
               <td className="px-2 py-2 border border-border">
-                <DeleteBtn onClick={() => setItems(items.filter((_, idx) => idx !== i))} />
+                <DeleteBtn onClick={async () => {
+                  try {
+                    await deleteGestor(item.id);
+                    const data = await getGestores();
+                    setItems(data);
+                  } catch (error) {
+                    console.error('Erro ao deletar gestor:', error);
+                  }
+                }} />
               </td>
             </tr>
           ))}
@@ -253,15 +418,35 @@ function GestoresTab() {
 
 // ─── ABA 6: Plantonistas ───
 function PlantonistasTab() {
-  const [items, setItems] = useState<Plantonista[]>(storage.getPlantonistas());
+  const [items, setItems] = useState<Plantonista[]>([]);
   const [nome, setNome] = useState('');
   const [cargo, setCargo] = useState('');
-  useEffect(() => { storage.setPlantonistas(items); }, [items]);
 
-  const add = () => {
+  useEffect(() => {
+    async function carregar() {
+      try {
+        const data = await getPlantonistas();
+        setItems(data);
+      } catch (error) {
+        console.error('Erro ao carregar plantonistas:', error);
+      }
+    }
+
+    carregar();
+  }, []);
+
+  const add = async () => {
     if (!nome.trim()) return;
-    setItems([...items, { id: genId(), nome: nome.trim(), cargo: cargo.trim() }]);
-    setNome(''); setCargo('');
+
+    try {
+      await addPlantonista(nome.trim(), cargo.trim());
+      const data = await getPlantonistas();
+      setItems(data);
+      setNome('');
+      setCargo('');
+    } catch (error) {
+      console.error('Erro ao adicionar plantonista:', error);
+    }
   };
 
   return (
@@ -284,7 +469,15 @@ function PlantonistasTab() {
               <td className="px-3 py-2 border border-border">{item.nome}</td>
               <td className="px-3 py-2 border border-border">{item.cargo || '-'}</td>
               <td className="px-2 py-2 border border-border">
-                <DeleteBtn onClick={() => setItems(items.filter((_, idx) => idx !== i))} />
+                <DeleteBtn onClick={async () => {
+                  try {
+                    await deletePlantonista(item.id);
+                    const data = await getPlantonistas();
+                    setItems(data);
+                  } catch (error) {
+                    console.error('Erro ao deletar plantonista:', error);
+                  }
+                }} />
               </td>
             </tr>
           ))}
@@ -296,14 +489,33 @@ function PlantonistasTab() {
 
 // ─── ABA 7: Tipos de Entrega ───
 function TiposEntregaTab() {
-  const [items, setItems] = useState<TipoEntrega[]>(storage.getTiposEntrega());
+  const [items, setItems] = useState<TipoEntrega[]>([]);
   const [nome, setNome] = useState('');
-  useEffect(() => { storage.setTiposEntrega(items); }, [items]);
 
-  const add = () => {
+  useEffect(() => {
+    async function carregar() {
+      try {
+        const data = await getTiposEntrega();
+        setItems(data);
+      } catch (error) {
+        console.error('Erro ao carregar tipos de entrega:', error);
+      }
+    }
+
+    carregar();
+  }, []);
+
+  const add = async () => {
     if (!nome.trim()) return;
-    setItems([...items, { id: genId(), nome: nome.trim() }]);
-    setNome('');
+
+    try {
+      await addTipoEntrega(nome.trim());
+      const data = await getTiposEntrega();
+      setItems(data);
+      setNome('');
+    } catch (error) {
+      console.error('Erro ao adicionar tipo de entrega:', error);
+    }
   };
 
   return (
@@ -324,7 +536,15 @@ function TiposEntregaTab() {
             <tr key={item.id}>
               <td className="px-3 py-2 border border-border">{item.nome}</td>
               <td className="px-2 py-2 border border-border">
-                <DeleteBtn onClick={() => setItems(items.filter((_, idx) => idx !== i))} />
+                <DeleteBtn onClick={async () => {
+                  try {
+                    await deleteTipoEntrega(item.id);
+                    const data = await getTiposEntrega();
+                    setItems(data);
+                  } catch (error) {
+                    console.error('Erro ao deletar tipo de entrega:', error);
+                  }
+                }} />
               </td>
             </tr>
           ))}
@@ -336,14 +556,33 @@ function TiposEntregaTab() {
 
 // ─── ABA 8: Prestadores de Serviço ───
 function PrestadoresTab() {
-  const [items, setItems] = useState<Fornecedor[]>(storage.getPrestadores());
+  const [items, setItems] = useState<Fornecedor[]>([]);
   const [nome, setNome] = useState('');
-  useEffect(() => { storage.setPrestadores(items); }, [items]);
 
-  const add = () => {
+  useEffect(() => {
+    async function carregar() {
+      try {
+        const data = await getPrestadores();
+        setItems(data);
+      } catch (error) {
+        console.error('Erro ao carregar prestadores:', error);
+      }
+    }
+
+    carregar();
+  }, []);
+
+  const add = async () => {
     if (!nome.trim()) return;
-    setItems([...items, { id: genId(), nome: nome.trim(), setor: '' }]);
-    setNome('');
+
+    try {
+      await addPrestador(nome.trim());
+      const data = await getPrestadores();
+      setItems(data);
+      setNome('');
+    } catch (error) {
+      console.error('Erro ao adicionar prestador:', error);
+    }
   };
 
   return (
@@ -364,7 +603,15 @@ function PrestadoresTab() {
             <tr key={item.id}>
               <td className="px-3 py-2 border border-border">{item.nome}</td>
               <td className="px-2 py-2 border border-border">
-                <DeleteBtn onClick={() => setItems(items.filter((_, idx) => idx !== i))} />
+                <DeleteBtn onClick={async () => {
+                  try {
+                    await deletePrestador(item.id);
+                    const data = await getPrestadores();
+                    setItems(data);
+                  } catch (error) {
+                    console.error('Erro ao deletar prestador:', error);
+                  }
+                }} />
               </td>
             </tr>
           ))}
@@ -378,14 +625,33 @@ function PrestadoresTab() {
 
 // ─── ABA 9: Setores ───
 function SetoresTab() {
-  const [items, setItems] = useState<Setor[]>(storage.getSetores());
+  const [items, setItems] = useState<Setor[]>([]);
   const [nome, setNome] = useState('');
-  useEffect(() => { storage.setSetores(items); }, [items]);
 
-  const add = () => {
+  useEffect(() => {
+    async function carregar() {
+      try {
+        const data = await getSetores();
+        setItems(data);
+      } catch (error) {
+        console.error('Erro ao carregar setores:', error);
+      }
+    }
+
+    carregar();
+  }, []);
+
+  const add = async () => {
     if (!nome.trim()) return;
-    setItems([...items, { id: genId(), nome: nome.trim() }]);
-    setNome('');
+
+    try {
+      await addSetor(nome.trim());
+      const data = await getSetores();
+      setItems(data);
+      setNome('');
+    } catch (error) {
+      console.error('Erro ao adicionar setor:', error);
+    }
   };
 
   return (
@@ -406,7 +672,15 @@ function SetoresTab() {
             <tr key={item.id}>
               <td className="px-3 py-2 border border-border">{item.nome}</td>
               <td className="px-2 py-2 border border-border">
-                <DeleteBtn onClick={() => setItems(items.filter((_, idx) => idx !== i))} />
+                <DeleteBtn onClick={async () => {
+                  try {
+                    await deleteSetor(item.id);
+                    const data = await getSetores();
+                    setItems(data);
+                  } catch (error) {
+                    console.error('Erro ao deletar setor:', error);
+                  }
+                }} />
               </td>
             </tr>
           ))}

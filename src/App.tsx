@@ -3,8 +3,10 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import AppSidebar from "@/components/AppSidebar";
+import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import Relatorio from "./pages/Relatorio";
 import Cadastros from "./pages/Cadastros";
+import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -19,8 +21,23 @@ const App = () => (
           <main className="flex-1 p-6 overflow-auto">
             <Routes>
               <Route path="/" element={<Relatorio />} />
-              <Route path="/cadastros" element={<Cadastros />} />
-              <Route path="/configuracoes" element={<Cadastros />} />
+              <Route path="/login" element={<Login />} />
+              <Route
+                path="/cadastros"
+                element={
+                  <ProtectedRoute>
+                    <Cadastros />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/configuracoes"
+                element={
+                  <ProtectedRoute>
+                    <Cadastros />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </main>

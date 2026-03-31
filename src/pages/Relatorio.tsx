@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback, useRef, useMemo, type ChangeEvent, type ClipboardEvent, type ReactNode } from 'react';
+import { useState, useCallback, useRef, useMemo, type ChangeEvent, type ClipboardEvent, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { storage, getDiaSemana, createEmptyReport } from '@/lib/storage';
 import {
   ReportData, INTERFONE_OPTIONS, ReportShift,
+  Colaborador, SupervisorCastelo, Fornecedor, Gestor, Plantonista, TipoEntrega, Setor,
   VisitaRow, GecRow, AchadoRow, AutorizacaoMenorRow, TentativaMenorRow,
   SaidaMaterialRow, TesourariaRow, EntradaGestorRow, EntregaHospedeRow,
   EntregaFornecedorRow, HelpdeskRow, EncomendaRow, OcorrenciaItem,
@@ -28,9 +29,39 @@ import { configuracoesAdmin } from '@/lib/configuracoesAdmin';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
+import { useEffect } from 'react'
+import { supabase } from '@/lib/supabase'
+import {
+  getColaboradores,
+  getSupervisoresCastelo,
+  getFornecedores,
+  getGestores,
+  getPlantonistas,
+  getTiposEntrega,
+  getPrestadores,
+  getSetores,
+} from '@/lib/api/cadastros'
+
 
 
 export default function Relatorio() {
+
+  useEffect(() => {
+  console.log('URL SUPABASE:', import.meta.env.VITE_SUPABASE_URL)
+  console.log('KEY EXISTE:', !!import.meta.env.VITE_SUPABASE_ANON_KEY)
+
+  async function testar() {
+    const { data, error } = await supabase
+      .from('funcoes_seguranca')
+      .select('*')
+
+    console.log('DADOS:', data)
+    console.log('ERRO:', error)
+  }
+
+  testar()
+}, [])
+
   const imageViewId = useMemo(() => new URLSearchParams(window.location.search).get('ocorrenciaImagem'), []);
   const reportFromStorage = useMemo(() => storage.getReport(), []);
   const occurrenceForImageView = useMemo(() => {
@@ -96,18 +127,79 @@ export default function Relatorio() {
     );
   }
 
+
   const toggle = (key: string) => setOpenSections(p => ({ ...p, [key]: !p[key] }));
   const isOpen = (key: string) => openSections[key] !== false;
 
   // Load config data
-  const colaboradores = storage.getColaboradores();
-  const supervisoresCastelo = storage.getSupervisoresCastelo();
-  const fornecedores = storage.getFornecedores();
-  const gestores = storage.getGestores();
-  const plantonistas = storage.getPlantonistas();
-  const tiposEntrega = storage.getTiposEntrega();
-  const prestadores = storage.getPrestadores();
-  const setores = storage.getSetores();
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
+  const [supervisoresCastelo, setSupervisoresCastelo] = useState<SupervisorCastelo[]>([]);
+  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
+  const [gestores, setGestores] = useState<Gestor[]>([]);
+  const [plantonistas, setPlantonistas] = useState<Plantonista[]>([]);
+  const [tiposEntrega, setTiposEntrega] = useState<TipoEntrega[]>([]);
+  const [prestadores, setPrestadores] = useState<Fornecedor[]>([]);
+  const [setores, setSetores] = useState<Setor[]>([]);
+
+  const empresasPrestadores = useMemo(() => {
+    const mapa = new Map<string, Fornecedor>();
+
+    [...fornecedores, ...prestadores].forEach((item) => {
+      const nome = item.nome?.trim();
+      if (!nome) return;
+
+      const existente = mapa.get(nome);
+      if (!existente) {
+        mapa.set(nome, item);
+        return;
+      }
+
+      if (!existente.setor?.trim() && item.setor?.trim()) {
+        mapa.set(nome, item);
+      }
+    });
+
+    return Array.from(mapa.values()).sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [fornecedores, prestadores]);
+
+  useEffect(() => {
+    async function carregarCadastros() {
+      try {
+        const [
+          colaboradoresData,
+          supervisoresData,
+          fornecedoresData,
+          gestoresData,
+          plantonistasData,
+          tiposEntregaData,
+          prestadoresData,
+          setoresData,
+        ] = await Promise.all([
+          getColaboradores(),
+          getSupervisoresCastelo(),
+          getFornecedores(),
+          getGestores(),
+          getPlantonistas(),
+          getTiposEntrega(),
+          getPrestadores(),
+          getSetores(),
+        ]);
+
+        setColaboradores(colaboradoresData);
+        setSupervisoresCastelo(supervisoresData);
+        setFornecedores(fornecedoresData);
+        setGestores(gestoresData);
+        setPlantonistas(plantonistasData);
+        setTiposEntrega(tiposEntregaData);
+        setPrestadores(prestadoresData);
+        setSetores(setoresData);
+      } catch (error) {
+        console.error('Erro ao carregar cadastros:', error);
+      }
+    }
+
+    carregarCadastros();
+  }, []);
 
   const handleNewReport = () => {
     const fresh = createEmptyReport();
@@ -116,9 +208,24 @@ export default function Relatorio() {
   };
 
   const handleExportPDF = async () => {
-    try { await generatePDF(report); toast({ title: 'PDF gerado!' }); }
-    catch { toast({ title: 'Erro ao gerar PDF', variant: 'destructive' }); }
-  };
+  try {
+    const plantonistaSelecionado = plantonistas.find(
+      (p) => p.nome === report.plantonista
+    );
+
+    const reportParaPdf = {
+      ...report,
+      plantonista: plantonistaSelecionado
+        ? `${plantonistaSelecionado.nome} — ${plantonistaSelecionado.cargo}`
+        : report.plantonista,
+    };
+
+    await generatePDF(reportParaPdf);
+    toast({ title: 'PDF gerado!' });
+  } catch {
+    toast({ title: 'Erro ao gerar PDF', variant: 'destructive' });
+  }
+};
 
 
   const handlePreencherPadrao = () => {
@@ -270,12 +377,17 @@ export default function Relatorio() {
                     <FreeTextCombobox
                       value={row.nome}
                       onChange={value => {
-                        const c = configuracoesAdmin.efetivo.find(c => c.nome === value);
+                        const colaborador = colaboradores.find(c => c.nome === value);
                         const arr = [...report.efetivo];
-                        arr[i] = { ...row, nome: value, horario: c?.horario || row.horario };
+                        arr[i] = { ...row, nome: value, horario: colaborador?.horario || row.horario };
                         update({ efetivo: arr });
                       }}
-                      options={configuracoesAdmin.efetivo.filter(c => c.nome?.trim()).map((c, idx) => ({ value: c.nome, label: c.nome || `Colaborador ${idx + 1}` }))}
+                      options={colaboradores
+                        .filter(c => c.nome?.trim())
+                        .map((c, idx) => ({
+                          value: c.nome,
+                          label: c.horario?.trim() ? `${c.nome} — ${c.horario}` : c.nome || `Colaborador ${idx + 1}`,
+                        }))}
                       placeholder="Digite..."
                     />
                   </td>
@@ -633,10 +745,10 @@ export default function Relatorio() {
                   <FreeTextCombobox
                     value={row.empresa}
                     onChange={value => {
-                      const p = prestadores.find(prestador => prestador.nome === value);
-                      updateArray('entregaFornecedores', i, { ...row, empresa: value, setor: p?.setor || row.setor });
+                      const empresaSelecionada = empresasPrestadores.find(item => item.nome === value);
+                      updateArray('entregaFornecedores', i, { ...row, empresa: value, setor: empresaSelecionada?.setor || row.setor });
                     }}
-                    options={prestadores.map(p => ({ value: p.nome, label: p.nome }))}
+                    options={empresasPrestadores.map(item => ({ value: item.nome, label: item.nome }))}
                     placeholder="Selecione ou digite..."
                   />
                 </td>
@@ -918,11 +1030,22 @@ function FreeTextCombobox({
   const filteredOptions = useMemo(() => {
     const search = inputValue.trim().toLowerCase();
     if (!search) return options;
-    return options.filter(option => option.label.toLowerCase().includes(search) || option.value.toLowerCase().includes(search));
+    return options.filter(
+      option =>
+        option.label.toLowerCase().includes(search) ||
+        option.value.toLowerCase().includes(search)
+    );
   }, [inputValue, options]);
 
+  const handleValueChange = (nextValue: string) => {
+    setInputValue(nextValue);
+    onChange(nextValue);
+  };
+
   const commitCustomValue = () => {
-    onChange(inputValue.trim());
+    const trimmedValue = inputValue.trim();
+    setInputValue(trimmedValue);
+    onChange(trimmedValue);
   };
 
   return (
@@ -931,7 +1054,7 @@ function FreeTextCombobox({
         <Input
           value={inputValue}
           onChange={event => {
-            setInputValue(event.target.value);
+            handleValueChange(event.target.value);
           }}
           onBlur={() => {
             window.setTimeout(() => {
@@ -942,6 +1065,7 @@ function FreeTextCombobox({
             if (event.key === 'Enter') {
               event.preventDefault();
               commitCustomValue();
+              setOpen(false);
             }
           }}
           placeholder={placeholder}
@@ -959,9 +1083,17 @@ function FreeTextCombobox({
           </Button>
         </PopoverTrigger>
       </div>
-      <PopoverContent className="w-[320px] max-w-[var(--radix-popper-available-width)] p-0" align="end">
+
+      <PopoverContent
+        className="w-[320px] max-w-[var(--radix-popper-available-width)] p-0"
+        align="end"
+      >
         <Command shouldFilter={false}>
-          <CommandInput value={inputValue} onValueChange={setInputValue} placeholder="Pesquisar..." />
+          <CommandInput
+            value={inputValue}
+            onValueChange={handleValueChange}
+            placeholder="Pesquisar..."
+          />
           <CommandList>
             <CommandEmpty>Nenhum item encontrado.</CommandEmpty>
             <CommandGroup>
@@ -972,9 +1104,17 @@ function FreeTextCombobox({
                   setOpen(false);
                 }}
               >
-                <Check className={cn('mr-2 h-4 w-4', filteredOptions.some(option => option.value === value) ? 'opacity-0' : 'opacity-100')} />
+                <Check
+                  className={cn(
+                    'mr-2 h-4 w-4',
+                    filteredOptions.some(option => option.value === value)
+                      ? 'opacity-0'
+                      : 'opacity-100'
+                  )}
+                />
                 Digitar
               </CommandItem>
+
               {filteredOptions.map(option => (
                 <CommandItem
                   key={option.value}
@@ -985,7 +1125,12 @@ function FreeTextCombobox({
                     setOpen(false);
                   }}
                 >
-                  <Check className={cn('mr-2 h-4 w-4', value === option.value ? 'opacity-100' : 'opacity-0')} />
+                  <Check
+                    className={cn(
+                      'mr-2 h-4 w-4',
+                      value === option.value ? 'opacity-100' : 'opacity-0'
+                    )}
+                  />
                   {option.label}
                 </CommandItem>
               ))}

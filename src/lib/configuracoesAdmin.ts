@@ -3,7 +3,7 @@ import { ReportData } from './types';
 
 export const configuracoesAdmin = {
   efetivo: [
-    { funcao: 'Supervisor', nome: 'WAGNER COSTA', horario: 'FOLGA', radio: '-' },
+    { funcao: 'Supervisor', nome: 'WAGNER COSTA', horario: '09:00-17:30', radio: '-' },
     { funcao: 'Portaria Social', nome: 'GEICIANE SILVA', horario: '07:00-19:00', radio: '-' },
     { funcao: 'Portaria Praia', nome: 'AMANDA LUIZA', horario: '07:00-19:00', radio: '-' },
     { funcao: 'Rondante', nome: 'VINÍCIOS', horario: '07:00-19:00', radio: '-' },

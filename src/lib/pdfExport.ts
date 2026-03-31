@@ -32,6 +32,37 @@ function setTextStyle(doc: jsPDF, size: number, weight: 'regular' | 'semibold' |
   doc.setTextColor(color);
 }
 
+function normalizeOccurrenceText(text: string): string {
+  if (!text) return '-';
+
+  return text
+    // normaliza quebras de linha do Windows
+    .replace(/\r\n/g, '\n')
+
+    // remove espaços duplicados
+    .replace(/[ \t]+/g, ' ')
+
+    // remove espaço antes de pontuação
+    .replace(/\s+([,.;:!?])/g, '$1')
+
+    // remove espaço logo depois de abrir parêntese
+    .replace(/\(\s+/g, '(')
+
+    // remove espaço logo antes de fechar parêntese
+    .replace(/\s+\)/g, ')')
+
+    // corrige múltiplas linhas vazias
+    .replace(/\n{3,}/g, '\n\n')
+
+    // limpa espaços no começo/fim de cada linha
+    .split('\n')
+    .map((line) => line.trim())
+    .join('\n')
+
+    // remove espaços no começo/fim do texto
+    .trim();
+}
+
 function mmLineHeight(fontSize: number, multiplier = 1.2) {
   return fontSize * 0.3528 * multiplier;
 }
@@ -151,9 +182,31 @@ export async function generatePDF(report: ReportData) {
     doc.line(marginL + third * 2, infoY, marginL + third * 2, infoY + infoH);
 
     setTextStyle(doc, 8, 'bold', DARK_PURPLE);
-    doc.text(`DATA: ${formatDate(report.data)}`, marginL + third / 2, infoY + 5.8, { align: 'center' });
-    doc.text(`DIA: ${report.diaSemana || '-'}`, marginL + third + third / 2, infoY + 5.8, { align: 'center' });
-    doc.text(`PLANTONISTA: ${report.plantonista || '-'}`, marginL + third * 2 + third / 2, infoY + 5.8, { align: 'center' });
+doc.text(`DATA: ${formatDate(report.data)}`, marginL + third / 2, infoY + 5.8, { align: 'center' });
+doc.text(`DIA: ${report.diaSemana || '-'}`, marginL + third + third / 2, infoY + 5.8, { align: 'center' });
+
+const plantonistaHeaderText = `PLANTONISTA: ${report.plantonista || '-'}`;
+const plantonistaLines = doc.splitTextToSize(plantonistaHeaderText, third - 6) as string[];
+
+// se couber em 1 linha, mantém tamanho normal
+if (plantonistaLines.length === 1) {
+  setTextStyle(doc, 8, 'bold', DARK_PURPLE);
+  doc.text(plantonistaLines[0], marginL + third * 2 + third / 2, infoY + 5.8, { align: 'center' });
+} else {
+  // se quebrar, reduz um pouco a fonte e centraliza em 2 linhas
+  const adjustedLines = doc.splitTextToSize(plantonistaHeaderText, third - 8) as string[];
+  centerTextBlock(
+    doc,
+    adjustedLines,
+    marginL + third * 2 + 1.5,
+    infoY + 0.3,
+    third - 3,
+    infoH - 0.6,
+    6.6,
+    'bold',
+    DARK_PURPLE
+  );
+}
 
     y = infoY + infoH + 4;
   };
@@ -277,74 +330,159 @@ export async function generatePDF(report: ReportData) {
   };
 
   const drawOccurrencesSection = () => {
-    if (report.ocorrencias.length === 0) return;
+  if (report.ocorrencias.length === 0) return;
 
-    checkPage(20);
+  const drawOccurrenceHeader = () => {
     doc.setFillColor(DARK_PURPLE);
     doc.setDrawColor(BORDER);
     doc.rect(marginL, y, contentW, 8, 'FD');
-    centerTextBlock(doc, [`OCORRÊNCIAS/INTERVENÇÕES DURANTE O PLANTÃO ${getShiftLabel(report)}`], marginL, y, contentW, 8, 8, 'bold', WHITE);
-    y += 11;
-
-    report.ocorrencias.forEach((oc, i) => {
-      const title = `${i + 1} - ${oc.titulo || 'SEM TÍTULO'}`;
-      const titleLines = doc.splitTextToSize(title, contentW) as string[];
-      const descriptionLines = doc.splitTextToSize(oc.descricao || '-', contentW - 4) as string[];
-      const hasImage = Boolean(oc.imagemBase64);
-      const titleH = Math.max(5, titleLines.length * 4);
-      const descH = Math.max(4, descriptionLines.length * 3.8);
-      const attachmentH = hasImage ? 7 : 0;
-      const neededSpace = titleH + descH + attachmentH + 4;
-
-    if (y + neededSpace > pageH - 20) {
-         doc.addPage();
-          y = 12;
-      }
-
-      setTextStyle(doc, 8.5, 'bold', DARK_PURPLE);
-      let titleY = y;
-      titleLines.forEach((line) => {
-        doc.text(line, marginL, titleY);
-        titleY += 4;
-      });
-
-      doc.setDrawColor(MEDIUM_PURPLE);
-      doc.setLineWidth(0.25);
-      doc.line(marginL, titleY - 1, marginL + contentW, titleY - 1);
-
-      setTextStyle(doc, 8, 'regular', BLACK);
-      let descY = titleY + 3;
-      descriptionLines.forEach((line) => {
-        doc.text(line, marginL + 1.5, descY);
-        descY += 3.8;
-      });
-
-      if (hasImage && oc.imagemBase64) {
-        const downloadUrl = buildOccurrenceDownloadPageUrl(report, i, oc.titulo || `ocorrencia_${i + 1}`);
-        setTextStyle(doc, 8, 'semibold', '#1D4ED8');
-        doc.textWithLink('Baixar imagem anexada', marginL + 1.5, descY + 1.5, { url: downloadUrl });
-        descY += 4.8;
-      }
-
-      y = descY + 2.2;
-    });
-
-    checkPage(10);
-    doc.setFillColor(DARK_PURPLE);
-    doc.setDrawColor(BORDER);
-    doc.rect(marginL, y + 1, contentW, 8, 'FD');
-    centerTextBlock(doc, ['REPASSO O PLANTÃO SEM MAIS'], marginL, y + 1, contentW, 8, 10, 'bold', WHITE);
+    centerTextBlock(
+      doc,
+      [`OCORRÊNCIAS/INTERVENÇÕES DURANTE O PLANTÃO ${getShiftLabel(report)}`],
+      marginL,
+      y,
+      contentW,
+      8,
+      8,
+      'bold',
+      WHITE
+    );
     y += 11;
   };
 
+  const drawOccurrenceDivider = (titleY: number) => {
+    doc.setDrawColor(MEDIUM_PURPLE);
+    doc.setLineWidth(0.25);
+    doc.line(marginL, titleY - 1, marginL + contentW, titleY - 1);
+  };
+
+  const drawOccurrenceTitle = (titleLines: string[]) => {
+    setTextStyle(doc, 8.5, 'bold', DARK_PURPLE);
+
+    let titleY = y;
+    titleLines.forEach((line) => {
+      checkPage(5);
+      doc.text(line, marginL, titleY);
+      titleY += 4;
+      y += 4;
+    });
+
+    drawOccurrenceDivider(titleY);
+    y += 2;
+
+    return titleY;
+  };
+
+  // Se o fim da página estiver muito apertado, joga o cabeçalho para a próxima
+  if (pageH - y < 25) {
+    doc.addPage();
+    y = 12;
+  }
+
+  drawOccurrenceHeader();
+
+  report.ocorrencias.forEach((oc, i) => {
+    const title = `${i + 1} - ${oc.titulo || 'SEM TÍTULO'}`;
+    const titleLines = doc.splitTextToSize(title, contentW) as string[];
+    const normalizedDescription = normalizeOccurrenceText(oc.descricao || '-');
+    const descriptionParagraphs = normalizedDescription.split('\n').filter(Boolean);
+    const hasImage = Boolean(oc.imagemBase64);
+
+    // Antes do título da ocorrência, garanta pelo menos um espacinho mínimo
+    checkPage(12);
+
+    drawOccurrenceTitle(titleLines);
+
+    y+=3
+
+    setTextStyle(doc, 8, 'regular', BLACK);
+
+    descriptionParagraphs.forEach((paragraph, paragraphIndex) => {
+  const lines = doc.splitTextToSize(paragraph, contentW - 4) as string[];
+
+  lines.forEach((line) => {
+    checkPage(5);
+    doc.text(line, marginL + 1.5, y + 1.5);
+    y += 3.8;
+  });
+
+  // espaço entre parágrafos
+  if (paragraphIndex < descriptionParagraphs.length - 1) {
+    y += 2;
+  }
+});
+
+// PARA SEPARAR AS OCORRENCIAS DO ROXO LA EM BAIXO.
+if (i < report.ocorrencias.length - 1) {
+  y += 4;
+}
+
+    if (hasImage && oc.imagemBase64) {
+      checkPage(8);
+
+      const downloadUrl = buildOccurrenceDownloadPageUrl(
+        report,
+        i,
+        oc.titulo || `ocorrencia_${i + 1}`
+      );
+
+      setTextStyle(doc, 8, 'semibold', '#1D4ED8');
+      doc.textWithLink('Baixar imagem anexada', marginL + 1.5, y + 2, {
+        url: downloadUrl,
+      });
+
+      y += 4.8;
+    }
+
+    y += 2.2;
+  });
+
+  checkPage(10);
+  doc.setFillColor(DARK_PURPLE);
+  doc.setDrawColor(BORDER);
+  doc.rect(marginL, y + 1, contentW, 8, 'FD');
+  centerTextBlock(
+    doc,
+    ['REPASSO O PLANTÃO SEM MAIS'],
+    marginL,
+    y + 1,
+    contentW,
+    8,
+    10,
+    'bold',
+    WHITE
+  );
+  y += 11;
+};
+
   drawMainHeader();
 
-  renderSection(
-    '1.1 EFETIVO SEGURANÇA DO PLANTÃO',
-    ['FUNÇÃO', 'NOME', 'HORÁRIO', 'RÁDIO'],
-    report.efetivo.map((r) => [r.funcao, r.nome, r.horario, r.radio]),
-    [40, 60, 45, 41]
-  );
+  const efetivoRows = report.efetivo
+  .filter((r) => {
+    const funcao = (r.funcao || '').trim().toUpperCase();
+    const nome = (r.nome || '').trim();
+    const horario = (r.horario || '').trim();
+    const radio = (r.radio || '').trim();
+
+    const isBombeiroOuApoio = funcao === 'BOMBEIRO' || funcao === 'APOIO';
+
+    if (!isBombeiroOuApoio) return true;
+
+    return Boolean(nome || horario || (radio && radio !== '-'));
+  })
+  .map((r) => [
+    r.funcao || '-',
+    r.nome || '-',
+    r.horario || '-',
+    r.radio || '-',
+  ]);
+
+renderSection(
+  '1.1 EFETIVO SEGURANÇA DO PLANTÃO',
+  ['FUNÇÃO', 'NOME', 'HORÁRIO', 'RÁDIO'],
+  efetivoRows,
+  [40, 60, 45, 41]
+);
 
   renderSection(
     '1.2 VISITA CASTELO BORGES',
