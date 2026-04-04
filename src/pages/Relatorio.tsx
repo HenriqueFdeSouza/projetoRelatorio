@@ -230,7 +230,32 @@ export default function Relatorio() {
 
   const handlePreencherPadrao = () => {
   update({
-    efetivo: configuracoesAdmin.efetivo,
+  efetivo: configuracoesAdmin.efetivo.map((item) => {
+  const funcao = (item.funcao || '').trim().toUpperCase();
+
+  if (funcao === 'SUPERVISOR') {
+    return item;
+  }
+
+  if (
+    report.tipoRelatorio === 'NOTURNO' &&
+    (funcao === 'RONDANTE' || funcao === 'VIGILANTES')
+  ) {
+    return {
+      ...item,
+      horario: '19:00-07:00',
+    };
+  }
+
+  if (report.tipoRelatorio === 'NOTURNO') {
+    return {
+      ...item,
+      horario: '19:00-07:00',
+    };
+  }
+
+  return item;
+}),
     elevadorTeste: configuracoesAdmin.elevadores,
     radiosRecebimento: configuracoesAdmin.radios.recebimento,
     radiosPassagem: configuracoesAdmin.radios.passagem,
@@ -246,22 +271,43 @@ export default function Relatorio() {
         quantidade: configuracoesAdmin.crachas.provisórios,
         cor: configuracoesAdmin.crachas.cor
       }
-    ]
+    ],
+    entradaGestores: gestores.map((g) => ({
+  entrada: '',
+  nome: g.nome,
+  setorCargo: g.setorCargo || '',
+  saida: '',
+})),
   });
 };
 
 
 
   const updateArray = <T,>(key: keyof ReportData, index: number, value: T) => {
-    const arr = [...(report[key] as T[])]; arr[index] = value;
-    update({ [key]: arr } as Partial<ReportData>);
-  };
-  const addToArray = <T,>(key: keyof ReportData, item: T) => {
-    update({ [key]: [...(report[key] as T[]), item] } as Partial<ReportData>);
-  };
-  const removeFromArray = (key: keyof ReportData, index: number) => {
-    update({ [key]: (report[key] as unknown[]).filter((_, i) => i !== index) } as Partial<ReportData>);
-  };
+  const arr = [...(report[key] as T[])];
+  arr[index] = value;
+  update({ [key]: arr } as Partial<ReportData>);
+};
+
+const isFretarNoturno = (empresa: string) => {
+  return report.tipoRelatorio === 'NOTURNO' && empresa.trim().toUpperCase() === 'FRETAR';
+};
+
+const addToArray = <T,>(key: keyof ReportData, item: T) => {
+  update({ [key]: [...(report[key] as T[]), item] } as Partial<ReportData>);
+};
+
+const removeFromArray = (key: keyof ReportData, index: number) => {
+  update({ [key]: (report[key] as unknown[]).filter((_, i) => i !== index) } as Partial<ReportData>);
+};
+
+const formatUH = (value: string) => {
+  const numbers = value.replace(/\D/g, '');
+
+  if (numbers.length <= 1) return numbers;
+
+  return `${numbers[0]}-${numbers.slice(1)}`;
+};
 
   const readImageAsBase64 = (file: File) => new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -368,29 +414,83 @@ export default function Relatorio() {
         {/* 1.1 Efetivo */}
         <Section id="1.1" title="1.1 — Efetivo de Segurança" isOpen={isOpen('1.1')} toggle={() => toggle('1.1')}>
           <table className="report-table">
-            <thead><tr><th>Função</th><th>Nome</th><th>Horário</th><th>Rádio</th></tr></thead>
+            <thead><tr><th>Função</th><th>Nome</th><th>Rádio</th></tr></thead>
             <tbody>
               {report.efetivo.map((row, i) => (
                 <tr key={i}>
-                  <td className="px-3 py-2 border border-border font-medium">{row.funcao}</td>
+                  <td className="px-3 py-2 border border-border font-medium">
+  {report.tipoRelatorio === 'NOTURNO' && row.funcao === 'Rondante'
+    ? 'Vigilantes'
+    : row.funcao}
+</td>
                   <td className="px-3 py-2 border border-border">
-                    <FreeTextCombobox
-                      value={row.nome}
-                      onChange={value => {
-                        const colaborador = colaboradores.find(c => c.nome === value);
-                        const arr = [...report.efetivo];
-                        arr[i] = { ...row, nome: value, horario: colaborador?.horario || row.horario };
-                        update({ efetivo: arr });
-                      }}
-                      options={colaboradores
-                        .filter(c => c.nome?.trim())
-                        .map((c, idx) => ({
-                          value: c.nome,
-                          label: c.horario?.trim() ? `${c.nome} — ${c.horario}` : c.nome || `Colaborador ${idx + 1}`,
-                        }))}
-                      placeholder="Digite..."
-                    />
-                  </td>
+  {report.tipoRelatorio === 'NOTURNO' && row.funcao === 'Rondante' ? (
+    <div className="space-y-2">
+      <FreeTextCombobox
+        value={(row.nome || '').split(' | ')[0] || ''}
+        onChange={value => {
+          const colaborador = colaboradores.find(c => c.nome === value);
+          const atual = (row.nome || '').split(' | ');
+          const arr = [...report.efetivo];
+
+          arr[i] = {
+            ...row,
+            nome: [value, atual[1]].filter(Boolean).join(' | '),
+            horario: colaborador?.horario || row.horario,
+          };
+
+          update({ efetivo: arr });
+        }}
+        options={colaboradores.map(c => ({
+          value: c.nome,
+          label: `${c.nome} — ${c.horario || ''}`,
+        }))}
+        placeholder="Digite o 1º vigilante."
+      />
+
+      <FreeTextCombobox
+        value={(row.nome || '').split(' | ')[1] || ''}
+        onChange={value => {
+          const atual = (row.nome || '').split(' | ');
+          const arr = [...report.efetivo];
+
+          arr[i] = {
+            ...row,
+            nome: [atual[0], value].filter(Boolean).join(' | '),
+          };
+
+          update({ efetivo: arr });
+        }}
+        options={colaboradores.map(c => ({
+          value: c.nome,
+          label: `${c.nome} — ${c.horario || ''}`,
+        }))}
+        placeholder="Digite o 2º vigilante."
+      />
+    </div>
+  ) : (
+    <FreeTextCombobox
+      value={row.nome}
+      onChange={value => {
+        const colaborador = colaboradores.find(c => c.nome === value);
+        const arr = [...report.efetivo];
+
+        arr[i] = {
+          ...row,
+          nome: value,
+          horario: colaborador?.horario || row.horario,
+        };
+
+        update({ efetivo: arr });
+      }}
+      options={colaboradores.map(c => ({
+        value: c.nome,
+        label: `${c.nome} — ${c.horario || ''}`,
+      }))}
+      placeholder="Digite."
+    />
+  )}
+</td>
                   <td className="px-3 py-2 border border-border">
                     <TimeInput value={row.horario} onChange={v => { const arr = [...report.efetivo]; arr[i] = { ...row, horario: v }; update({ efetivo: arr }); }} placeholder="07:00-19:00" allowRange />
                   </td>
@@ -496,7 +596,6 @@ export default function Relatorio() {
               {report.elevadorTeste.map((row, i) => (
                 <tr key={i}>
                   <td className="px-3 py-2 border border-border font-medium">{row.elevador}</td>
-                  <td className="px-3 py-2 border border-border"><TimeInput value={row.horario} onChange={v => { const arr = [...report.elevadorTeste]; arr[i] = { ...row, horario: v }; update({ elevadorTeste: arr }); }} /></td>
                   <td className="px-3 py-2 border border-border">
                     <FreeTextCombobox
                       value={row.interfone}
@@ -664,7 +763,7 @@ export default function Relatorio() {
         {/* 1.15 Tesouraria */}
         <Section id="1.15" title="1.15 — Procedimento Tesouraria" isOpen={isOpen('1.15')} toggle={() => toggle('1.15')}>
           <DynamicTable<TesourariaRow>
-            columns={['Nome', 'Entrada', 'Saída', 'Nível', 'Senha', 'Destino']}
+            columns={['Nome', 'Entrada', 'Saída', 'Nível', 'Senha', 'Acompanhantes']}
             rows={report.tesouraria}
             renderRow={(row, i) => (
               <>
@@ -725,40 +824,87 @@ export default function Relatorio() {
                     placeholder="Digite..."
                   />
                 </td>
-                <TdInput value={row.uh} onChange={v => updateArray('entregaHospedes', i, { ...row, uh: v })} placeholder="0-000" />
+                <TdInput
+  value={row.uh}
+  onChange={v =>
+    updateArray('entregaHospedes', i, {
+      ...row,
+      uh: formatUH(v),
+    })
+  }
+/>
               </>
             )}
             onAdd={() => addToArray('entregaHospedes', { numero: '', tipo: '', uh: '' })}
             onRemove={i => removeFromArray('entregaHospedes', i)}
           />
         </Section>
-
+        
+        
         {/* 1.18 Entregas Fornecedores */}
         <Section id="1.18" title="1.18 — Entregas de Fornecedores/Prestadores" isOpen={isOpen('1.18')} toggle={() => toggle('1.18')}>
-          <DynamicTable<EntregaFornecedorRow>
-            columns={['Nº', 'Empresa', 'Setor']}
-            rows={report.entregaFornecedores}
-            renderRow={(row, i) => (
-              <>
-                <td className="px-3 py-2 border border-border text-center font-medium w-16">{String(i + 1).padStart(2, '0')}</td>
-                <td className="px-3 py-2 border border-border">
-                  <FreeTextCombobox
-                    value={row.empresa}
-                    onChange={value => {
-                      const empresaSelecionada = empresasPrestadores.find(item => item.nome === value);
-                      updateArray('entregaFornecedores', i, { ...row, empresa: value, setor: empresaSelecionada?.setor || row.setor });
-                    }}
-                    options={empresasPrestadores.map(item => ({ value: item.nome, label: item.nome }))}
-                    placeholder="Selecione ou digite..."
-                  />
-                </td>
-                <TdSectorSelect value={row.setor} onChange={v => updateArray('entregaFornecedores', i, { ...row, setor: v })} setores={setores} />
-              </>
-            )}
-            onAdd={() => addToArray('entregaFornecedores', { numero: '', empresa: '', setor: '' })}
-            onRemove={i => removeFromArray('entregaFornecedores', i)}
+  <DynamicTable<EntregaFornecedorRow>
+    columns={[
+      'Nº',
+      'Empresa',
+      report.tipoRelatorio === 'NOTURNO' &&
+      report.entregaFornecedores.some(item => item.empresa.trim().toUpperCase() === 'FRETAR')
+        ? 'Horário'
+        : 'Setor'
+    ]}
+    rows={report.entregaFornecedores}
+    renderRow={(row, i) => (
+      <>
+        <td className="px-3 py-2 border border-border text-center font-medium w-16">
+          {String(i + 1).padStart(2, '0')}
+        </td>
+
+        <td className="px-3 py-2 border border-border">
+          <FreeTextCombobox
+            value={row.empresa}
+            onChange={value => {
+              const empresaSelecionada = empresasPrestadores.find(item => item.nome === value);
+
+              if (report.tipoRelatorio === 'NOTURNO' && value.trim().toUpperCase() === 'FRETAR') {
+                updateArray('entregaFornecedores', i, {
+                  ...row,
+                  empresa: value,
+                  setor: row.setor,
+                });
+                return;
+              }
+
+              updateArray('entregaFornecedores', i, {
+                ...row,
+                empresa: value,
+                setor: empresaSelecionada?.setor || row.setor,
+              });
+            }}
+            options={empresasPrestadores.map(item => ({ value: item.nome, label: item.nome }))}
+            placeholder="Selecione ou digite."
           />
-        </Section>
+        </td>
+
+        {isFretarNoturno(row.empresa) ? (
+          <td className="px-3 py-2 border border-border">
+            <TimeInput
+              value={row.setor}
+              onChange={v => updateArray('entregaFornecedores', i, { ...row, setor: v })}
+            />
+          </td>
+        ) : (
+          <TdSectorSelect
+            value={row.setor}
+            onChange={v => updateArray('entregaFornecedores', i, { ...row, setor: v })}
+            setores={setores}
+          />
+        )}
+      </>
+    )}
+    onAdd={() => addToArray('entregaFornecedores', { numero: '', empresa: '', setor: '' })}
+    onRemove={i => removeFromArray('entregaFornecedores', i)}
+  />
+</Section>
 
         {/* 1.19 Falta de Energia */}
         <Section id="1.19" title="1.19 — Falta de Energia" isOpen={isOpen('1.19')} toggle={() => toggle('1.19')}>
@@ -1141,6 +1287,18 @@ function FreeTextCombobox({
     </Popover>
   );
 }
+
+function parseOccupancyValue(value: string) {
+  const normalized = String(value || '')
+    .trim()
+    .replace(/\s+/g, '')
+    .replace('%', '')
+    .replace(',', '.');
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function OccupancyStats({ ocupacao }: { ocupacao: ReportData['ocupacao'] }) {
   const colors = {
     atual: '#7B2D8B',
@@ -1149,12 +1307,13 @@ function OccupancyStats({ ocupacao }: { ocupacao: ReportData['ocupacao'] }) {
     checkout: '#FF9800',
   };
 
+  // metodo para alterar a ocupação para receber ". e ,"
   const data = [
-    { name: 'Atual', value: Number(ocupacao.atual) || 0, fill: colors.atual },
-    { name: 'Prevista', value: Number(ocupacao.prevista) || 0, fill: colors.prevista },
-    { name: 'Check-in', value: Number(ocupacao.checkin) || 0, fill: colors.checkin },
-    { name: 'Check-out', value: Number(ocupacao.checkout) || 0, fill: colors.checkout },
-  ];
+  { name: 'Atual', value: parseOccupancyValue(ocupacao.atual), fill: colors.atual },
+  { name: 'Prevista', value: parseOccupancyValue(ocupacao.prevista), fill: colors.prevista },
+  { name: 'Check-in', value: parseOccupancyValue(ocupacao.checkin), fill: colors.checkin },
+  { name: 'Check-out', value: parseOccupancyValue(ocupacao.checkout), fill: colors.checkout },
+];
 
   return (
     <div className="rounded-lg border border-border bg-muted/20 p-3 min-h-[220px]">

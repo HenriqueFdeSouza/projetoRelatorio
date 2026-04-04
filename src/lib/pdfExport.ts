@@ -32,6 +32,27 @@ function setTextStyle(doc: jsPDF, size: number, weight: 'regular' | 'semibold' |
   doc.setTextColor(color);
 }
 
+function parseOccupancyValue(value: string) {
+  const normalized = String(value || '')
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/%/g, '')
+    .replace(',', '.');
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatOccupancyPercent(value: string) {
+  const parsed = parseOccupancyValue(value);
+  return parsed === null ? '-' : `${parsed}%`;
+}
+
+function formatOccupancyRaw(value: string) {
+  const parsed = parseOccupancyValue(value);
+  return parsed === null ? '-' : String(parsed);
+}
+
 function normalizeOccurrenceText(text: string): string {
   if (!text) return '-';
 
@@ -294,11 +315,11 @@ if (plantonistaLines.length === 1) {
 
   const drawOccupancyStats = () => {
     const values = [
-      { label: 'ATUAL', value: Number(report.ocupacao.atual) || 0, color: '#7B2D8B' },
-      { label: 'PREVISTA', value: Number(report.ocupacao.prevista) || 0, color: '#4CAF50' },
-      { label: 'CHECK-IN', value: Number(report.ocupacao.checkin) || 0, color: '#2196F3' },
-      { label: 'CHECK-OUT', value: Number(report.ocupacao.checkout) || 0, color: '#FF9800' },
-    ];
+  { label: 'ATUAL', value: parseOccupancyValue(report.ocupacao.atual), color: '#7B2D8B' },
+  { label: 'PREVISTA', value: parseOccupancyValue(report.ocupacao.prevista), color: '#4CAF50' },
+  { label: 'CHECK-IN', value: parseOccupancyValue(report.ocupacao.checkin), color: '#2196F3' },
+  { label: 'CHECK-OUT', value: parseOccupancyValue(report.ocupacao.checkout), color: '#FF9800' },
+];
 
     const boxH = 34;
     checkPage(boxH + 2);
@@ -471,11 +492,15 @@ if (i < report.ocorrencias.length - 1) {
     return Boolean(nome || horario || (radio && radio !== '-'));
   })
   .map((r) => [
-    r.funcao || '-',
-    r.nome || '-',
-    r.horario || '-',
-    r.radio || '-',
-  ]);
+  report.tipoRelatorio === 'NOTURNO' && (r.funcao || '').trim().toUpperCase() === 'RONDANTE'
+    ? 'Vigilantes'
+    : (r.funcao || '-'),
+  report.tipoRelatorio === 'NOTURNO' && (r.funcao || '').trim().toUpperCase() === 'RONDANTE'
+  ? (r.nome || '-').replace(/\s*\|\s*/g, ' / ')
+  : (r.nome || '-'),
+  r.horario || '-',
+  r.radio || '-',
+]);
 
 renderSection(
   '1.1 EFETIVO SEGURANÇA DO PLANTÃO',
@@ -491,16 +516,16 @@ renderSection(
   );
 
   renderSection(
-    '1.3 OCUPAÇÃO WELLNESS RESORT',
-    ['OCUPAÇÃO', 'VALOR'],
-    [
-      ['ATUAL', `${report.ocupacao.atual || '-'}%`],
-      ['PREVISTA', `${report.ocupacao.prevista || '-'}%`],
-      ['CHECK-IN', report.ocupacao.checkin || '-'],
-      ['CHECK-OUT', report.ocupacao.checkout || '-'],
-    ],
-    [93, 93]
-  );
+  '1.3 OCUPAÇÃO WELLNESS RESORT',
+  ['OCUPAÇÃO', 'VALOR'],
+  [
+    ['ATUAL', formatOccupancyPercent(report.ocupacao.atual)],
+    ['PREVISTA', formatOccupancyPercent(report.ocupacao.prevista)],
+    ['CHECK-IN', formatOccupancyRaw(report.ocupacao.checkin)],
+    ['CHECK-OUT', formatOccupancyRaw(report.ocupacao.checkout)],
+  ],
+  [93, 93]
+);
   drawOccupancyStats();
 
   const estacionamentoRows = report.estacionamento.map((r) => [r.local, String(r.capacidade), r.quantidade || '-', r.agente || '-']);
@@ -521,11 +546,11 @@ renderSection(
   );
 
   renderSection(
-    '1.6 TESTE – INTERFONE/ALARME – ELEVADORES',
-    ['ELEVADORES', 'HORÁRIO', 'INTERFONE', 'ALARME', 'NOME'],
-    report.elevadorTeste.map((r) => [r.elevador, r.horario, r.interfone, r.alarme, r.agente]),
-    [40, 30, 36, 36, 44]
-  );
+  '1.6 TESTE – INTERFONE/ALARME – ELEVADORES',
+  ['ELEVADORES', 'INTERFONE', 'ALARME', 'NOME'],
+  report.elevadorTeste.map((r) => [r.elevador, r.interfone, r.alarme, r.agente]),
+  [50, 46, 46, 44]
+);
 
   renderSection(
     '1.7 CONTROLE DE RÁDIOS',
@@ -579,7 +604,7 @@ renderSection(
 
   renderSection(
     '1.15 PROCEDIMENTO TESOURARIA',
-    ['NOME', 'ENTRADA', 'SAÍDA', 'NÍVEL', 'SENHA', 'DESTINO'],
+    ['NOME', 'ENTRADA', 'SAÍDA', 'NÍVEL', 'SENHA', 'ACOMPANHANTES'],
     report.tesouraria.map((r) => [r.nome, r.entrada, r.saida, r.nivel, r.senha, r.destino]),
     [32, 28, 28, 30, 30, 38]
   );
@@ -598,12 +623,20 @@ renderSection(
     [20, 83, 83]
   );
 
-  renderSection(
-    '1.18 ENTREGAS FORNECEDORES/PRESTADORES',
-    ['Nº', 'EMPRESA', 'SETOR'],
-    report.entregaFornecedores.map((r, i) => [String(i + 1).padStart(2, '0'), r.empresa, r.setor]),
-    [20, 83, 83]
-  );
+  const entregaFornecedorTemFretarNoturno =
+  report.tipoRelatorio === 'NOTURNO' &&
+  report.entregaFornecedores.some((r) => (r.empresa || '').trim().toUpperCase() === 'FRETAR');
+
+renderSection(
+  '1.18 ENTREGAS FORNECEDORES/PRESTADORES',
+  ['Nº', 'EMPRESA', entregaFornecedorTemFretarNoturno ? 'HORÁRIO' : 'SETOR'],
+  report.entregaFornecedores.map((r, i) => [
+    String(i + 1).padStart(2, '0'),
+    r.empresa || '-',
+    r.setor || '-',
+  ]),
+  [20, 83, 83]
+);
 
   renderSection(
     '1.19 FALTA DE ENERGIA',
