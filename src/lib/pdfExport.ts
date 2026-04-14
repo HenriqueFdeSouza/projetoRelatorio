@@ -585,14 +585,14 @@ renderSection(
   renderSection(
     '1.12 AUTORIZAÇÃO SAÍDA DE MENOR',
     ['NOME DA CRIANÇA', 'AUTORIZADOR', 'UH', 'VALIDADE', 'STATUS'],
-    report.autorizacaoMenor.map((r) => [r.nomeCrianca, r.autorizador, r.uh, r.validade, r.status]),
+    report.autorizacaoMenor.map((r) => [r.nomeCrianca, r.autorizador, formatUH(r.uh), r.validade, r.status]),
     [40, 38, 28, 38, 42]
   );
 
   renderSection(
     '1.13 TENTATIVA SAÍDA MENOR DESACOMPANHADO',
     ['NOME DA CRIANÇA', 'UH', 'PORTARIA', 'AUTORIZAÇÃO?'],
-    report.tentativaMenor.map((r) => [r.nomeCrianca, r.uh, r.portaria, r.possuiAutorizacao])
+    report.tentativaMenor.map((r) => [r.nomeCrianca, formatUH(r.uh), r.portaria, r.possuiAutorizacao])
   );
 
   renderSection(
@@ -619,7 +619,7 @@ renderSection(
   renderSection(
     '1.17 ENTREGAS HÓSPEDES E PROPRIETÁRIOS',
     ['Nº', 'TIPO DE ENTREGA', 'UH'],
-    report.entregaHospedes.map((r, i) => [String(i + 1).padStart(2, '0'), r.tipo, r.uh]),
+    report.entregaHospedes.map((r, i) => [String(i + 1).padStart(2, '0'), r.tipo, formatUH(r.uh)]),
     [20, 83, 83]
   );
 
@@ -656,7 +656,7 @@ renderSection(
   renderSection(
     '1.21 ENCOMENDAS DE PROPRIETÁRIOS',
     ['Nº', 'UH', 'QUANTIDADE', 'PROPRIETÁRIO'],
-    report.encomendas.map((r, i) => [String(i + 1).padStart(2, '0'), r.uh, r.quantidade, r.proprietario])
+    report.encomendas.map((r, i) => [String(i + 1).padStart(2, '0'), formatUH(r.uh), r.quantidade, r.proprietario])
   );
 
   drawOccurrencesSection();
@@ -667,7 +667,21 @@ renderSection(
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '-';
+
   const parts = dateStr.split('-');
+
   if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0].slice(2)}`;
+
   return dateStr;
+}
+
+function formatUH(value: string): string {
+  const numbers = String(value || '').replace(/\D/g, '');
+
+  if (numbers.length <= 3) return numbers || '-';
+
+  const bloco = numbers.slice(0, -3);
+  const unidade = numbers.slice(-3);
+
+  return `${bloco}-${unidade}`;
 }

@@ -304,9 +304,12 @@ const removeFromArray = (key: keyof ReportData, index: number) => {
 const formatUH = (value: string) => {
   const numbers = value.replace(/\D/g, '');
 
-  if (numbers.length <= 1) return numbers;
+  if (numbers.length <= 3) return numbers;
 
-  return `${numbers[0]}-${numbers.slice(1)}`;
+  const bloco = numbers.slice(0, -3);
+  const unidade = numbers.slice(-3);
+
+  return `${bloco}-${unidade}`;
 };
 
   const readImageAsBase64 = (file: File) => new Promise<string>((resolve, reject) => {
@@ -591,32 +594,60 @@ const formatUH = (value: string) => {
         {/* 1.6 Elevadores */}
         <Section id="1.6" title="1.6 — Teste Interfone/Alarme/Elevadores" isOpen={isOpen('1.6')} toggle={() => toggle('1.6')}>
           <table className="report-table">
-            <thead><tr><th>Elevador/Bloco</th><th>Horário</th><th>Interfone</th><th>Alarme</th><th>Agente</th></tr></thead>
-            <tbody>
-              {report.elevadorTeste.map((row, i) => (
-                <tr key={i}>
-                  <td className="px-3 py-2 border border-border font-medium">{row.elevador}</td>
-                  <td className="px-3 py-2 border border-border">
-                    <FreeTextCombobox
-                      value={row.interfone}
-                      onChange={value => { const arr = [...report.elevadorTeste]; arr[i] = { ...row, interfone: value }; update({ elevadorTeste: arr }); }}
-                      options={INTERFONE_OPTIONS.map(o => ({ value: o, label: o }))}
-                      placeholder="Digite..."
-                    />
-                  </td>
-                  <td className="px-3 py-2 border border-border">
-                    <FreeTextCombobox
-                      value={row.alarme}
-                      onChange={value => { const arr = [...report.elevadorTeste]; arr[i] = { ...row, alarme: value }; update({ elevadorTeste: arr }); }}
-                      options={INTERFONE_OPTIONS.map(o => ({ value: o, label: o }))}
-                      placeholder="Digite..."
-                    />
-                  </td>
-                  <td className="px-3 py-2 border border-border"><Input value={row.agente} onChange={e => { const arr = [...report.elevadorTeste]; arr[i] = { ...row, agente: e.target.value }; update({ elevadorTeste: arr }); }} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+  <thead>
+    <tr>
+      <th>Elevador/Bloco</th>
+      <th>Interfone</th>
+      <th>Alarme</th>
+      <th>Agente</th>
+    </tr>
+  </thead>
+
+  <tbody>
+    {report.elevadorTeste.map((row, i) => (
+      <tr key={i}>
+        <td className="px-3 py-2 border border-border font-medium">{row.elevador}</td>
+
+        <td className="px-3 py-2 border border-border">
+          <FreeTextCombobox
+            value={row.interfone}
+            onChange={value => {
+              const arr = [...report.elevadorTeste];
+              arr[i] = { ...row, interfone: value };
+              update({ elevadorTeste: arr });
+            }}
+            options={INTERFONE_OPTIONS.map(o => ({ value: o, label: o }))}
+            placeholder="Digite..."
+          />
+        </td>
+
+        <td className="px-3 py-2 border border-border">
+          <FreeTextCombobox
+            value={row.alarme}
+            onChange={value => {
+              const arr = [...report.elevadorTeste];
+              arr[i] = { ...row, alarme: value };
+              update({ elevadorTeste: arr });
+            }}
+            options={INTERFONE_OPTIONS.map(o => ({ value: o, label: o }))}
+            placeholder="Digite..."
+          />
+        </td>
+
+        <td className="px-3 py-2 border border-border">
+          <Input
+            value={row.agente}
+            onChange={e => {
+              const arr = [...report.elevadorTeste];
+              arr[i] = { ...row, agente: e.target.value };
+              update({ elevadorTeste: arr });
+            }}
+          />
+        </td>
+      </tr>
+    ))}
+  </tbody>
+</table>
         </Section>
 
         {/* 1.7 Rádios */}
@@ -713,7 +744,7 @@ const formatUH = (value: string) => {
               <>
                 <TdInput value={row.nomeCrianca} onChange={v => updateArray('autorizacaoMenor', i, { ...row, nomeCrianca: v })} />
                 <TdInput value={row.autorizador} onChange={v => updateArray('autorizacaoMenor', i, { ...row, autorizador: v })} />
-                <TdInput value={row.uh} onChange={v => updateArray('autorizacaoMenor', i, { ...row, uh: v })} />
+                <TdInput value={row.uh} onChange={v => updateArray('autorizacaoMenor', i, { ...row, uh: formatUH(v) })} />
                 <TdInput value={row.validade} onChange={v => updateArray('autorizacaoMenor', i, { ...row, validade: v })} />
                 <TdInput value={row.status} onChange={v => updateArray('autorizacaoMenor', i, { ...row, status: v })} />
               </>
@@ -731,7 +762,7 @@ const formatUH = (value: string) => {
             renderRow={(row, i) => (
               <>
                 <TdInput value={row.nomeCrianca} onChange={v => updateArray('tentativaMenor', i, { ...row, nomeCrianca: v })} />
-                <TdInput value={row.uh} onChange={v => updateArray('tentativaMenor', i, { ...row, uh: v })} />
+                <TdInput value={row.uh} onChange={v => updateArray('tentativaMenor', i, { ...row, uh: formatUH(v) })} />
                 <TdInput value={row.portaria} onChange={v => updateArray('tentativaMenor', i, { ...row, portaria: v })} />
                 <TdInput value={row.possuiAutorizacao} onChange={v => updateArray('tentativaMenor', i, { ...row, possuiAutorizacao: v })} />
               </>
@@ -941,7 +972,7 @@ const formatUH = (value: string) => {
             renderRow={(row, i) => (
               <>
                 <td className="px-3 py-2 border border-border text-center font-medium w-16">{String(i + 1).padStart(2, '0')}</td>
-                <TdInput value={row.uh} onChange={v => updateArray('encomendas', i, { ...row, uh: v })} />
+                <TdInput value={row.uh} onChange={v => updateArray('encomendas', i, { ...row, uh: formatUH(v) })} />
                 <TdInput value={row.quantidade} onChange={v => updateArray('encomendas', i, { ...row, quantidade: v })} />
                 <TdInput value={row.proprietario} onChange={v => updateArray('encomendas', i, { ...row, proprietario: v })} />
               </>
