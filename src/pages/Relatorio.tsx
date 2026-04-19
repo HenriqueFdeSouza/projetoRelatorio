@@ -15,9 +15,9 @@ import {
   ChevronRight,
   Plus,
   Trash2,
-  FileDown,
-  RotateCcw,
-  Check,
+  Eye,
+RotateCcw,
+Check,
   ChevronsUpDown,
   Image as ImageIcon,
   ExternalLink,
@@ -41,6 +41,7 @@ import {
   getPrestadores,
   getSetores,
 } from '@/lib/api/cadastros'
+import { upsertRelatorioFinalizado } from '@/lib/api/relatorios'
 
 
 
@@ -72,6 +73,7 @@ export default function Relatorio() {
   const [report, setReport] = useState<ReportData>(reportFromStorage);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const reportRef = useRef<HTMLDivElement>(null);
+  const [isFinalizing, setIsFinalizing] = useState(false);
 
   const autoSave = useCallback((data: ReportData) => { storage.setReport(data); }, []);
   const update = useCallback((partial: Partial<ReportData>) => {
@@ -207,25 +209,28 @@ export default function Relatorio() {
     toast({ title: 'Novo plantão', description: 'Relatório limpo. Cadastros mantidos.' });
   };
 
-  const handleExportPDF = async () => {
-  try {
+  const buildReportSnapshot = () => {
     const plantonistaSelecionado = plantonistas.find(
       (p) => p.nome === report.plantonista
     );
 
-    const reportParaPdf = {
+    return {
       ...report,
       plantonista: plantonistaSelecionado
         ? `${plantonistaSelecionado.nome} — ${plantonistaSelecionado.cargo}`
         : report.plantonista,
     };
+  };
 
-    await generatePDF(reportParaPdf);
-    toast({ title: 'PDF gerado!' });
-  } catch {
-    toast({ title: 'Erro ao gerar PDF', variant: 'destructive' });
-  }
-};
+  const handlePreviewPDF = async () => {
+    try {
+      const blobUrl = await generatePDF(buildReportSnapshot(), { mode: 'bloburl' });
+      window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      toast({ title: 'Pré-visualização do PDF aberta.' });
+    } catch {
+      toast({ title: 'Erro ao visualizar PDF', variant: 'destructive' });
+    }
+  };
 
 
   const handlePreencherPadrao = () => {
@@ -312,6 +317,106 @@ const formatUH = (value: string) => {
   return `${bloco}-${unidade}`;
 };
 
+const getFinalizeValidationErrors = () => {
+    const errors: string[] = [];
+
+    const hasGestor = report.entradaGestores.some((item) =>
+      Boolean((item.nome || '').trim())
+    );
+
+    const hasFornecedor = report.entregaFornecedores.some((item) =>
+      Boolean((item.empresa || '').trim())
+    );
+
+    const hasOcorrencia = report.ocorrencias.some((item) =>
+      Boolean((item.titulo || '').trim() || (item.descricao || '').trim())
+    );
+
+    const hasPlantonista = Boolean((report.plantonista || '').trim());
+
+    if (!hasGestor) {
+      errors.push('Adicione pelo menos 1 gestor na seção 1.16.');
+    }
+
+    if (!hasFornecedor) {
+      errors.push('Adicione pelo menos 1 fornecedor/prestador na seção 1.18.');
+    }
+
+    if (!hasOcorrencia) {
+      errors.push('Adicione pelo menos 1 ocorrência.');
+    }
+
+    if (!hasPlantonista) {
+      errors.push('Preencha o nome do plantonista no cabeçalho.');
+    }
+
+    return errors;
+  };
+
+  const handleFinalizeAndSaveReport = async () => {
+    const errors = getFinalizeValidationErrors();
+
+    if (errors.length > 0) {
+      toast({
+        title: 'Não foi possível finalizar o relatório',
+        description: errors.join(' '),
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const reportSnapshot = buildReportSnapshot();
+
+    try {
+      await generatePDF(reportSnapshot);
+    } catch {
+      toast({
+        title: 'Erro ao gerar PDF',
+        description: 'O relatório não foi salvo no banco porque o PDF não pôde ser gerado.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsFinalizing(true);
+
+    try {
+      const saveResult = await upsertRelatorioFinalizado(reportSnapshot);
+
+      if (saveResult.status === 'duplicate') {
+        toast({
+          title: 'PDF baixado, mas nada novo foi salvo',
+          description: saveResult.message,
+        });
+        return;
+      }
+
+      if (saveResult.status === 'less_complete') {
+        toast({
+          title: 'PDF baixado, mas o banco foi preservado',
+          description: saveResult.message,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      toast({
+        title: 'Relatório finalizado com sucesso!',
+        description: saveResult.message,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Não foi possível salvar no banco.';
+
+      toast({
+        title: 'PDF baixado, mas houve falha ao salvar',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsFinalizing(false);
+    }
+  };
+
   const readImageAsBase64 = (file: File) => new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || ''));
@@ -375,10 +480,16 @@ const formatUH = (value: string) => {
           <p className="text-xs opacity-80">Departamento de Segurança Patrimonial</p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Button onClick={handleExportPDF} className="gap-2"><FileDown className="w-4 h-4" /> Gerar PDF</Button>
-          <Button variant="secondary" onClick={handlePreencherPadrao} className="gap-2">Preencher padrão</Button>
-          <Button variant="outline" onClick={handleNewReport} className="gap-2"><RotateCcw className="w-4 h-4" /> Novo Plantão</Button>
-        </div>
+  <Button onClick={handlePreviewPDF} variant="outline" className="gap-2">
+    <Eye className="w-4 h-4" /> Visualizar PDF
+  </Button>
+  <Button onClick={handleFinalizeAndSaveReport} className="gap-2" disabled={isFinalizing}>
+    <Check className="w-4 h-4" />
+    {isFinalizing ? 'Salvando no banco...' : 'Finalizar e salvar relatório'}
+  </Button>
+  <Button variant="secondary" onClick={handlePreencherPadrao} className="gap-2">Preencher padrão</Button>
+  <Button variant="outline" onClick={handleNewReport} className="gap-2"><RotateCcw className="w-4 h-4" /> Novo Plantão</Button>
+</div>
       </div>
 
       {/* Header fields */}
@@ -1048,9 +1159,15 @@ const formatUH = (value: string) => {
         </Section>
       </div>
 
-      <div className="mt-6 flex justify-center">
-        <Button onClick={handleExportPDF} size="lg" className="gap-2"><FileDown className="w-5 h-5" /> Gerar PDF do Relatório</Button>
-      </div>
+      <div className="mt-6 flex justify-center flex-wrap gap-3">
+  <Button onClick={handlePreviewPDF} size="lg" variant="outline" className="gap-2">
+    <Eye className="w-5 h-5" /> Visualizar PDF
+  </Button>
+  <Button onClick={handleFinalizeAndSaveReport} size="lg" className="gap-2" disabled={isFinalizing}>
+    <Check className="w-5 h-5" />
+    {isFinalizing ? 'Salvando no banco...' : 'Finalizar e salvar relatório'}
+  </Button>
+</div>
     </div>
   );
 }

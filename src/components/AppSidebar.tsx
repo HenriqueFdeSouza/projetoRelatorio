@@ -1,10 +1,14 @@
 import { NavLink as RouterNavLink } from 'react-router-dom';
-import { FileText, Settings, Shield } from 'lucide-react';
+import { BarChart3, FileSearch, FileText, Settings, Shield } from 'lucide-react';
+import { Info } from "lucide-react"
 
 export default function AppSidebar() {
   const links = [
     { to: '/', label: 'Relatório', icon: FileText },
     { to: '/cadastros', label: 'Configurações', icon: Settings },
+    { to: '/admin', label: 'Consulta de relatórios', icon: FileSearch },
+    { to: '/estatisticas', label: 'Estatísticas', icon: BarChart3 },
+    { to: '/updates', label: 'Atualizações', icon: Info },
   ];
 
   return (

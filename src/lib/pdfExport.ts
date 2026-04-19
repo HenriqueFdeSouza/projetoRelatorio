@@ -135,7 +135,7 @@ function buildOccurrenceDownloadPageUrl(report: ReportData, occurrenceIndex: num
   return `${baseUrl}/download-ocorrencia.html?${params.toString()}`;
 }
 
-export async function generatePDF(report: ReportData) {
+export async function generatePDF(report: ReportData, options?: { mode?: 'download' | 'bloburl' }) {
   const doc = new jsPDF('p', 'mm', 'a4');
   const pageW = 210;
   const pageH = 297;
@@ -662,7 +662,13 @@ renderSection(
   drawOccurrencesSection();
 
   const fileName = `Relatorio_${getShiftLabel(report)}_${report.data || 'sem_data'}.pdf`;
+
+  if (options?.mode === 'bloburl') {
+    return doc.output('bloburl');
+  }
+
   doc.save(fileName);
+  return fileName;
 }
 
 function formatDate(dateStr: string): string {
