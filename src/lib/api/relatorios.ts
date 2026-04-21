@@ -321,6 +321,20 @@ export async function listRelatorios(filters?: {
   return (data || []) as RelatorioListItem[]
 }
 
+
+
+function normalizeConteudo<T>(value: T | string): T {
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as T
+    } catch {
+      throw new Error('O conteúdo do relatório veio em texto, mas não pôde ser convertido para JSON.')
+    }
+  }
+
+  return value as T
+}
+
 export async function getRelatorioById(id: string) {
   const { data, error } = await supabase
     .from('relatorios')
@@ -329,5 +343,11 @@ export async function getRelatorioById(id: string) {
     .single()
 
   if (error) throw error
-  return data as RelatorioRow
+
+  
+
+  return {
+  ...data,
+  conteudo: normalizeConteudo(data.conteudo),
+} as RelatorioRow
 }

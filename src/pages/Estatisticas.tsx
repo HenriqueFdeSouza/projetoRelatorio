@@ -1,15 +1,20 @@
-import { useEffect, useMemo, useState } from 'react'
+
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
   Boxes,
   ClipboardList,
+  Download,
   Package,
+  RefreshCw,
   SearchCheck,
   ShieldAlert,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/hooks/use-toast'
 import { getRelatorioById, listRelatorios } from '@/lib/api/relatorios'
+import { exportEstatisticaParaExcel, type ExportableMetricKey } from '@/lib/exportEstatisticasExcel'
+import { supabase } from '@/lib/supabase'
 import {
   ResponsiveContainer,
   LineChart,
@@ -43,12 +48,18 @@ type StatsBucket = {
   ocorrencias: number
 }
 
+type DetailedPrincipalReport = {
+  id: string
+  data_relatorio: string
+  turno: 'DIURNO' | 'NOTURNO'
+  conteudo: any
+}
+
 type MetricOption = {
   key: MetricKey
   title: string
   description: string
   icon: React.ComponentType<any>
-  valueFormatter?: (value: number) => string
   accent: string
   area: string
 }
@@ -123,7 +134,8 @@ function addMonths(date: Date, amount: number) {
 }
 
 function parseDateOnly(value: string) {
-  return new Date(`${value}T12:00:00`)
+  const [year, month, day] = value.split('-').map(Number)
+  return new Date(year, month - 1, day)
 }
 
 function monthLabel(date: Date) {
@@ -169,7 +181,49 @@ function buildEmptyBucket(label: string): StatsBucket {
   }
 }
 
-function buildStatsBuckets(period: StatsPeriod, reports: Array<{ data_relatorio: string; conteudo: any }>) {
+function normalizeConteudoSeguro(value: any) {
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value)
+    } catch {
+      return {}
+    }
+  }
+
+  return value || {}
+}
+
+function getOcorrencias(data: any) {
+  const items = normalizeConteudoSeguro(data).ocorrencias
+  return Array.isArray(items) ? items : []
+}
+
+function getTentativaMenor(data: any) {
+  const items = normalizeConteudoSeguro(data).tentativaMenor
+  return Array.isArray(items) ? items : []
+}
+
+function getHelpdesk(data: any) {
+  const items = normalizeConteudoSeguro(data).helpdesk
+  return Array.isArray(items) ? items : []
+}
+
+function getEntregaFornecedores(data: any) {
+  const items = normalizeConteudoSeguro(data).entregaFornecedores
+  return Array.isArray(items) ? items : []
+}
+
+function getEncomendas(data: any) {
+  const items = normalizeConteudoSeguro(data).encomendas
+  return Array.isArray(items) ? items : []
+}
+
+function getAchados(data: any) {
+  const items = normalizeConteudoSeguro(data).achados
+  return Array.isArray(items) ? items : []
+}
+
+function buildStatsBuckets(period: StatsPeriod, reports: DetailedPrincipalReport[]) {
   const today = startOfDay(new Date())
   const buckets: StatsBucket[] = []
   const sourceMap = new Map<string, StatsBucket>()
@@ -192,13 +246,18 @@ function buildStatsBuckets(period: StatsPeriod, reports: Array<{ data_relatorio:
       const bucket = sourceMap.get(label)
       if (!bucket) return
 
-      const data = report.conteudo
-      bucket.achados += countFilledRows(data.achados || [], ['local', 'objeto'])
-      bucket.tentativaMenorBarrada += (data.tentativaMenor || []).filter((item: any) => isBlockedAttempt(item.possuiAutorizacao || '')).length
-      bucket.entregasFornecedores += countFilledRows(data.entregaFornecedores || [], ['empresa'])
-      bucket.encomendas += countFilledRows(data.encomendas || [], ['proprietario', 'quantidade', 'uh'])
-      bucket.helpdesk += countFilledRows(data.helpdesk || [], ['nome', 'descricao', 'chamado', 'setor'])
-      bucket.ocorrencias += (data.ocorrencias || []).filter((item: any) => hasAnyText(item.titulo) || hasAnyText(item.descricao)).length
+      const data = normalizeConteudoSeguro(report.conteudo)
+
+bucket.achados += countFilledRows(getAchados(data), ['local', 'objeto'])
+bucket.tentativaMenorBarrada += getTentativaMenor(data).filter((item: any) =>
+  isBlockedAttempt(item.possuiAutorizacao || '')
+).length
+bucket.entregasFornecedores += countFilledRows(getEntregaFornecedores(data), ['empresa'])
+bucket.encomendas += countFilledRows(getEncomendas(data), ['proprietario', 'quantidade', 'uh'])
+bucket.helpdesk += countFilledRows(getHelpdesk(data), ['nome', 'descricao', 'chamado', 'setor'])
+bucket.ocorrencias += getOcorrencias(data).filter((item: any) =>
+  hasAnyText(item.titulo) || hasAnyText(item.descricao)
+).length
     })
 
     return buckets
@@ -223,13 +282,18 @@ function buildStatsBuckets(period: StatsPeriod, reports: Array<{ data_relatorio:
     const bucket = sourceMap.get(label)
     if (!bucket) return
 
-    const data = report.conteudo
-    bucket.achados += countFilledRows(data.achados || [], ['local', 'objeto'])
-    bucket.tentativaMenorBarrada += (data.tentativaMenor || []).filter((item: any) => isBlockedAttempt(item.possuiAutorizacao || '')).length
-    bucket.entregasFornecedores += countFilledRows(data.entregaFornecedores || [], ['empresa'])
-    bucket.encomendas += countFilledRows(data.encomendas || [], ['proprietario', 'quantidade', 'uh'])
-    bucket.helpdesk += countFilledRows(data.helpdesk || [], ['nome', 'descricao', 'chamado', 'setor'])
-    bucket.ocorrencias += (data.ocorrencias || []).filter((item: any) => hasAnyText(item.titulo) || hasAnyText(item.descricao)).length
+    const data = normalizeConteudoSeguro(report.conteudo)
+
+bucket.achados += countFilledRows(getAchados(data), ['local', 'objeto'])
+bucket.tentativaMenorBarrada += getTentativaMenor(data).filter((item: any) =>
+  isBlockedAttempt(item.possuiAutorizacao || '')
+).length
+bucket.entregasFornecedores += countFilledRows(getEntregaFornecedores(data), ['empresa'])
+bucket.encomendas += countFilledRows(getEncomendas(data), ['proprietario', 'quantidade', 'uh'])
+bucket.helpdesk += countFilledRows(getHelpdesk(data), ['nome', 'descricao', 'chamado', 'setor'])
+bucket.ocorrencias += getOcorrencias(data).filter((item: any) =>
+  hasAnyText(item.titulo) || hasAnyText(item.descricao)
+).length
   })
 
   return buckets
@@ -244,11 +308,20 @@ function averageMetric(items: StatsBucket[], key: MetricKey) {
   return Number((sumMetric(items, key) / items.length).toFixed(1))
 }
 
+function formatDateTimeBr(value: Date | null) {
+  if (!value) return '-'
+  return value.toLocaleString('pt-BR')
+}
+
 export default function Estatisticas() {
   const [statsPeriod, setStatsPeriod] = useState<StatsPeriod>('30d')
   const [selectedMetric, setSelectedMetric] = useState<MetricKey | ''>('')
   const [statsLoading, setStatsLoading] = useState(false)
   const [statsData, setStatsData] = useState<StatsBucket[]>([])
+  const [detailedReports, setDetailedReports] = useState<DetailedPrincipalReport[]>([])
+  const [exportingMetric, setExportingMetric] = useState<MetricKey | null>(null)
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null)
+  const [isRefreshingNow, setIsRefreshingNow] = useState(false)
 
   const metric = useMemo(
     () => METRICS.find((item) => item.key === selectedMetric) || null,
@@ -270,7 +343,11 @@ export default function Estatisticas() {
     return [...statsData].sort((a, b) => Number(b[selectedMetric]) - Number(a[selectedMetric]))[0]
   }, [selectedMetric, statsData])
 
-  const loadStats = async (period: StatsPeriod) => {
+  const loadStats = useCallback(async (showRefreshingState = false) => {
+    if (showRefreshingState) {
+      setIsRefreshingNow(true)
+    }
+
     setStatsLoading(true)
 
     try {
@@ -283,23 +360,70 @@ export default function Estatisticas() {
           return {
             id: item.id,
             data_relatorio: item.data_relatorio,
+            turno: item.turno,
             conteudo: detail.conteudo,
           }
         })
       )
 
-      setStatsData(buildStatsBuckets(period, details))
+
+      setDetailedReports(details)
+      setStatsData(buildStatsBuckets(statsPeriod, details))
+      setLastUpdatedAt(new Date())
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Não foi possível carregar as estatísticas.'
       toast({ title: 'Erro ao carregar estatísticas', description: message, variant: 'destructive' })
     } finally {
       setStatsLoading(false)
+      if (showRefreshingState) {
+        setIsRefreshingNow(false)
+      }
     }
-  }
+  }, [statsPeriod])
 
   useEffect(() => {
-    loadStats(statsPeriod)
-  }, [statsPeriod])
+    loadStats()
+  }, [loadStats])
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('estatisticas-relatorios-live')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'relatorios' },
+        () => {
+          loadStats()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [loadStats])
+
+  const handleExportMetric = async (metricKey: MetricKey) => {
+    setExportingMetric(metricKey)
+
+    try {
+      await exportEstatisticaParaExcel({
+        metricKey: metricKey as ExportableMetricKey,
+        period: statsPeriod,
+        reports: detailedReports,
+      })
+
+      const currentMetric = METRICS.find((item) => item.key === metricKey)
+      toast({
+        title: 'Excel gerado com sucesso!',
+        description: `O arquivo de ${currentMetric?.title.toLowerCase() || 'estatísticas'} foi baixado.`,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Não foi possível gerar o Excel.'
+      toast({ title: 'Erro ao exportar Excel', description: message, variant: 'destructive' })
+    } finally {
+      setExportingMetric(null)
+    }
+  }
 
   return (
     <div className="fade-in space-y-6">
@@ -309,49 +433,92 @@ export default function Estatisticas() {
       </div>
 
       <div className="bg-card rounded-lg border border-border p-4 space-y-4">
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant={statsPeriod === '7d' ? 'default' : 'outline'} onClick={() => setStatsPeriod('7d')}>
-            Últimos 7 dias
-          </Button>
-          <Button size="sm" variant={statsPeriod === '30d' ? 'default' : 'outline'} onClick={() => setStatsPeriod('30d')}>
-            Últimos 30 dias
-          </Button>
-          <Button size="sm" variant={statsPeriod === '6m' ? 'default' : 'outline'} onClick={() => setStatsPeriod('6m')}>
-            Últimos 6 meses
-          </Button>
-          <Button size="sm" variant={statsPeriod === '1y' ? 'default' : 'outline'} onClick={() => setStatsPeriod('1y')}>
-            1 ano
-          </Button>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant={statsPeriod === '7d' ? 'default' : 'outline'} onClick={() => setStatsPeriod('7d')}>
+              Últimos 7 dias
+            </Button>
+            <Button size="sm" variant={statsPeriod === '30d' ? 'default' : 'outline'} onClick={() => setStatsPeriod('30d')}>
+              Últimos 30 dias
+            </Button>
+            <Button size="sm" variant={statsPeriod === '6m' ? 'default' : 'outline'} onClick={() => setStatsPeriod('6m')}>
+              Últimos 6 meses
+            </Button>
+            <Button size="sm" variant={statsPeriod === '1y' ? 'default' : 'outline'} onClick={() => setStatsPeriod('1y')}>
+              1 ano
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground">
+              Última atualização: {formatDateTimeBr(lastUpdatedAt)}
+            </span>
+
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              onClick={() => loadStats(true)}
+              disabled={statsLoading || isRefreshingNow}
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshingNow ? 'animate-spin' : ''}`} />
+              {isRefreshingNow ? 'Atualizando...' : 'Atualizar agora'}
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
           {METRICS.map((item) => {
             const Icon = item.icon
             const isActive = selectedMetric === item.key
+            const isExporting = exportingMetric === item.key
 
             return (
-              <button
+              <div
                 key={item.key}
-                type="button"
-                onClick={() => setSelectedMetric(item.key)}
-                className={`rounded-2xl border text-left p-4 transition-all ${
+                className={`rounded-2xl border p-4 transition-all ${
                   isActive
                     ? 'border-primary shadow-md bg-primary/5'
                     : 'border-border bg-background hover:border-primary/40 hover:bg-muted/30'
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="text-base font-semibold">{item.title}</div>
-                    <p className="text-sm text-muted-foreground leading-5">{item.description}</p>
-                  </div>
-                  <div className="rounded-xl p-3" style={{ backgroundColor: item.area }}>
-                    <Icon className="w-5 h-5" color={item.accent} />
+                  <button
+                    type="button"
+                    onClick={() => setSelectedMetric(item.key)}
+                    className="flex-1 text-left"
+                  >
+                    <div className="space-y-1">
+                      <div className="text-base font-semibold">{item.title}</div>
+                      <p className="text-sm text-muted-foreground leading-5">{item.description}</p>
+                    </div>
+                  </button>
+
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="rounded-xl p-3" style={{ backgroundColor: item.area }}>
+                      <Icon className="w-5 h-5" color={item.accent} />
+                    </div>
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="gap-2"
+                      onClick={() => handleExportMetric(item.key)}
+                      disabled={statsLoading || isExporting}
+                    >
+                      <Download className="w-4 h-4" />
+                      {isExporting ? 'Gerando...' : 'Excel'}
+                    </Button>
                   </div>
                 </div>
-              </button>
+              </div>
             )
           })}
+        </div>
+
+        <div className="rounded-xl border border-dashed border-border bg-muted/20 p-3 text-xs text-muted-foreground">
+          As estatísticas são calculadas com base nas versões principais dos relatórios. Se um relatório novo entrar no banco com valor zero para a métrica selecionada, o gráfico pode não subir mesmo tendo sido atualizado.
         </div>
       </div>
 
@@ -391,11 +558,9 @@ export default function Estatisticas() {
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
             <div className="xl:col-span-2 rounded-2xl border border-border bg-card p-5">
-              <div className="flex items-start justify-between gap-3 mb-4">
-                <div>
-                  <h2 className="text-lg font-semibold">{metric.title}</h2>
-                  <p className="text-sm text-muted-foreground">Evolução no período selecionado</p>
-                </div>
+              <div className="mb-4">
+                <h2 className="text-lg font-semibold">{metric.title}</h2>
+                <p className="text-sm text-muted-foreground">Evolução no período selecionado</p>
               </div>
 
               {statsLoading ? (
