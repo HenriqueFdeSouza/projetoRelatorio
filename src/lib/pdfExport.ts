@@ -578,8 +578,8 @@ renderSection(
 
   renderSection(
     '1.11 ACHADOS E PERDIDOS',
-    ['LOCAL', 'SEGURANÇA', 'OBJETO ENCONTRADO', 'ENTREGUE'],
-    report.achados.map((r) => [r.local, r.seguranca, r.objeto, r.entregue])
+    ['LOCAL', 'SEGURANÇA', 'OBJETO ENCONTRADO', 'VALOR'],
+    report.achados.map((r) => [r.local, r.seguranca, r.objeto, r.valor || '-'])
   );
 
   renderSection(

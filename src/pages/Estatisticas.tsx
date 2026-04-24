@@ -366,7 +366,6 @@ export default function Estatisticas() {
         })
       )
 
-
       setDetailedReports(details)
       setStatsData(buildStatsBuckets(statsPeriod, details))
       setLastUpdatedAt(new Date())

@@ -42,18 +42,17 @@ const METRIC_CONFIGS: Record<ExportableMetricKey, MetricConfig> = {
   achados: {
     title: 'Achados e perdidos',
     description: 'Registros de objetos/local encontrados no período selecionado.',
-    columns: ['Data', 'Turno', 'Local', 'Segurança', 'Objeto encontrado', 'Entregue para', 'Valor'],
+    columns: ['Data', 'Turno', 'Local', 'Segurança', 'Objeto encontrado', 'Valor'],
     mapRows: (report) =>
       (report.conteudo.achados || [])
-        .filter((item: any) => [item.local, item.seguranca, item.objeto, item.entregue].some((value) => hasText(value)))
+        .filter((item: any) => [item.local, item.seguranca, item.objeto, item.valor].some((value) => hasText(value)))
         .map((item: any) => [
           formatDateBr(report.data_relatorio),
           report.turno,
           item.local || '-',
           item.seguranca || '-',
           item.objeto || '-',
-          item.entregue || '-',
-          '',
+          parseCurrencyValue(item.valor),
         ]),
   },
   tentativaMenorBarrada: {
@@ -171,6 +170,22 @@ function formatDateRangeBr(start: Date, end: Date) {
 
 function hasText(value: unknown) {
   return typeof value === 'string' ? value.trim().length > 0 : Boolean(value)
+}
+
+function parseCurrencyValue(value: unknown) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : ''
+
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+
+  const normalized = raw
+    .replace(/R\$\s?/gi, '')
+    .replace(/\s+/g, '')
+    .replace(/\./g, '')
+    .replace(',', '.')
+
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : raw
 }
 
 function isBlockedAttempt(value: string) {
@@ -314,16 +329,24 @@ export async function exportEstatisticaParaExcel({ metricKey, period, reports }:
     })
   }
 
-  if (metricKey === 'achados') {
-    worksheet.getColumn(7).width = 18
+  if (metricKey === 'achados' && rows.length > 0) {
+    worksheet.getColumn(6).width = 18
+
     for (let rowIndex = 5; rowIndex <= worksheet.rowCount; rowIndex += 1) {
-      const cell = worksheet.getCell(`G${rowIndex}`)
+      const cell = worksheet.getCell(`F${rowIndex}`)
       cell.numFmt = 'R$ #,##0.00'
       cell.alignment = { horizontal: 'center', vertical: 'middle' }
-      if (!cell.value) {
-        cell.value = ''
-      }
     }
+
+    const totalRowIndex = worksheet.rowCount + 1
+    const totalRow = worksheet.addRow(['', '', '', '', 'TOTAL', { formula: `SUM(F5:F${totalRowIndex - 1})` }])
+    totalRow.font = { bold: true, color: { argb: COLORS.textDark } }
+    totalRow.alignment = { vertical: 'middle', horizontal: 'center' }
+    totalRow.eachCell((cell) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.subheader } }
+    })
+    worksheet.getCell(`F${totalRowIndex}`).numFmt = 'R$ #,##0.00'
+    applyBorders(totalRow)
   }
 
   worksheet.views = [{ state: 'frozen', ySplit: 4 }]

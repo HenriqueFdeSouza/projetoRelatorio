@@ -831,17 +831,17 @@ const getFinalizeValidationErrors = () => {
         {/* 1.11 Achados */}
         <Section id="1.11" title="1.11 — Achados e Perdidos" isOpen={isOpen('1.11')} toggle={() => toggle('1.11')}>
           <DynamicTable<AchadoRow>
-            columns={['Local', 'Segurança', 'Objeto Encontrado', 'Entregue para']}
+            columns={['Local', 'Segurança', 'Objeto Encontrado', 'Valor']}
             rows={report.achados}
             renderRow={(row, i) => (
               <>
                 <TdInput value={row.local} onChange={v => updateArray('achados', i, { ...row, local: v })} />
                 <TdInput value={row.seguranca} onChange={v => updateArray('achados', i, { ...row, seguranca: v })} />
                 <TdInput value={row.objeto} onChange={v => updateArray('achados', i, { ...row, objeto: v })} />
-                <TdInput value={row.entregue} onChange={v => updateArray('achados', i, { ...row, entregue: v })} />
+                <TdInput value={row.valor || ''} onChange={v => updateArray('achados', i, { ...row, valor: v })} placeholder="R$ 0,00" />
               </>
             )}
-            onAdd={() => addToArray('achados', { local: '', seguranca: '', objeto: '', entregue: '' })}
+            onAdd={() => addToArray('achados', { local: '', seguranca: '', objeto: '', valor: '' })}
             onRemove={i => removeFromArray('achados', i)}
           />
         </Section>

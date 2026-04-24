@@ -119,7 +119,8 @@ export interface AchadoRow {
   local: string;
   seguranca: string;
   objeto: string;
-  entregue: string;
+  valor: string;
+  entregue?: string;
 }
 
 export interface AutorizacaoMenorRow {
